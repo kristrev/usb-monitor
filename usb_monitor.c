@@ -2,95 +2,14 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <assert.h>
+#include <sys/time.h>
 
 #include <libusb-1.0/libusb.h>
 
 #include "usb_monitor.h"
 #include "ykush_handler.h"
-
-static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev);
-
-/* Port list functions. No need for a find since these do not depend on events */
-void usb_monitor_add_port(struct usb_monitor_ctx *ctx, struct usb_port *port)
-{
-    LIST_INSERT_HEAD(&(ctx->port_list), port, port_next);
-}
-
-void usb_monitor_del_port(struct usb_port *port)
-{
-    LIST_REMOVE(port, port_next);
-
-    if (port->status == PORT_DEV_CONNECTED)
-        libusb_unref_device(port->dev);
-}
-
-struct usb_port *usb_monitor_find_port_path(struct usb_monitor_ctx *ctx,
-                                            libusb_device *dev)
-{
-    uint8_t path[8];
-    int32_t num_port_numbers;
-    struct usb_port *itr = ctx->port_list.lh_first;
-
-    //Create path for device we want to look up
-    path[0] = libusb_get_bus_number(dev);
-    num_port_numbers = libusb_get_port_numbers(dev, path + 1, sizeof(path) - 1);
-
-    for (; itr != NULL; itr = itr->port_next.le_next) {
-        //Need to compare both length and content to avoid matching subset of
-        //paths
-        if ((itr->path_len != (num_port_numbers + 1)) || 
-            (memcmp(itr->path, path, num_port_numbers + 1)))
-            continue;
-
-        break;
-    }
-
-    return itr;
-}
-
-/* HUB list functions  */
-void usb_monitor_add_hub(struct usb_monitor_ctx *ctx, struct usb_hub *hub)
-{
-    ssize_t cnt, i;
-    libusb_device **list, *dev;
-
-    //First, insert hub in list
-    LIST_INSERT_HEAD(&(ctx->hub_list), hub, hub_next);
-
-    //Whenever we add a hub, we also need to iterate through the list of devices
-    //and see if we are aware of any that are connected
-    cnt = libusb_get_device_list(NULL, &list);
-
-    if (cnt < 0) {
-        fprintf(stderr, "Failed to get device list\n");
-        assert(0);
-    }
-
-    for (i = 0; i<cnt; i++) {
-        dev = list[i];
-        usb_device_added(ctx, dev);
-    }
-
-    libusb_free_device_list(list, 1);
-}
-
-void usb_monitor_del_hub(struct usb_hub *hub)
-{
-    LIST_REMOVE(hub, hub_next);
-}
-
-struct usb_hub* usb_monitor_find_hub(struct usb_monitor_ctx *ctx,
-                                     libusb_device *hub)
-{
-    struct usb_hub *itr = ctx->hub_list.lh_first;
-
-    for (; itr != NULL; itr = itr->hub_next.le_next)
-        if (itr->hub_dev == hub)
-            return itr;
-
-    return NULL;
-}
+#include "usb_monitor_lists.h"
+#include "usb_helpers.h"
 
 static void usb_monitor_print_ports(struct usb_monitor_ctx *ctx)
 {
@@ -102,8 +21,21 @@ static void usb_monitor_print_ports(struct usb_monitor_ctx *ctx)
     fprintf(stdout, "\n");
 }
 
-/* libusb-callbacks for when devices are added/removed */
-static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
+static void usb_monitor_reset_all_ports(struct usb_monitor_ctx *ctx)
+{
+    struct usb_port *itr = ctx->port_list.lh_first;
+
+    for (; itr != NULL; itr = itr->port_next.le_next)
+        //Only restart which are not connected and are currently not being reset
+        if (itr->status == PORT_NO_DEV_CONNECTED &&
+            itr->msg_mode != RESET)
+            itr->update(itr);
+}
+
+/* libusb-callbacks for when devices are added/removed. It is also called
+ * manually when we detect a hub, since we risk devices being added before we
+ * see for example the YKUSH HID device */
+void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
 {
     //Check if device is connected to a port we control
     struct usb_port *port = usb_monitor_find_port_path(ctx, dev);
@@ -122,31 +54,27 @@ static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     fprintf(stdout, "Device: %.4x:%.4x added\n", desc.idVendor, desc.idProduct);
 
     //We need to configure port. So far, this is all generic
+    port->vid = desc.idVendor;
+    port->pid = desc.idProduct;
     port->status = PORT_DEV_CONNECTED;
     port->dev = dev;
+    port->msg_mode = PING;
     libusb_ref_device(dev);
 
     usb_monitor_print_ports(ctx);
+
+    //Whenever we detect a device, we need to add to timeout to send ping
+    usb_helpers_start_timeout(port);
 }
 
 static void usb_device_removed(struct usb_monitor_ctx *ctx, libusb_device *dev)
 {
     struct usb_port *port = usb_monitor_find_port_path(ctx, dev);
-    struct libusb_device_descriptor desc;
 
     if (!port)
         return;
 
-    port->status = PORT_NO_DEV_CONNECTED;
-
-    if (port->dev) {
-        libusb_get_device_descriptor(dev, &desc);
-        fprintf(stdout, "Device: %.4x:%.4x removed\n", desc.idVendor, desc.idProduct);
-
-        port->dev = NULL;
-        libusb_unref_device(dev);
-    }
-
+    usb_helpers_reset_port(port);
     usb_monitor_print_ports(ctx);
 }
 
@@ -178,11 +106,37 @@ static int usb_monitor_cb(libusb_context *ctx, libusb_device *device,
     return 0;
 }
 
+static void usb_monitor_check_timeouts(struct usb_monitor_ctx *ctx)
+{
+    struct usb_port *timeout_itr = NULL, *old_timeout = NULL;
+    struct timeval tv;
+    uint64_t cur_time;
+
+    gettimeofday(&tv, NULL);
+    cur_time = (tv.tv_sec * 1e6) + tv.tv_usec;
+
+    timeout_itr = ctx->timeout_list.lh_first;
+
+    while (timeout_itr != NULL) {
+        if (cur_time >= timeout_itr->timeout_expire) {
+            //Detatch from list, then run timeout
+            old_timeout = timeout_itr;
+            timeout_itr = timeout_itr->timeout_next.le_next;
+
+            usb_monitor_del_timeout(old_timeout);
+            old_timeout->timeout(old_timeout);
+        } else {
+            timeout_itr = timeout_itr->timeout_next.le_next;
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
     struct usb_monitor_ctx *ctx = NULL;
     int retval = 0;
     struct timeval tv = {1,0};
+    struct timeval last_timeout, cur_time;
 
     ctx = malloc(sizeof(struct usb_monitor_ctx));
 
@@ -193,6 +147,7 @@ int main(int argc, char *argv[])
 
     LIST_INIT(&(ctx->hub_list));
     LIST_INIT(&(ctx->port_list));
+    LIST_INIT(&(ctx->timeout_list));
 
     retval = libusb_init(NULL);
     if (retval) {
@@ -222,9 +177,24 @@ int main(int argc, char *argv[])
                                      usb_monitor_cb,
                                      ctx, NULL);
 
+
+    gettimeofday(&last_timeout, NULL);
     //For now, just use the libusb wait-function as a basic event loop
-    while (1)
+    while (1) {
         libusb_handle_events_timeout_completed(NULL, &tv, NULL);
+
+        //Check if we have any pending timeouts
+        usb_monitor_check_timeouts(ctx);
+
+        gettimeofday(&cur_time, NULL);
+
+        if (cur_time.tv_sec - last_timeout.tv_sec > 20) {
+            last_timeout.tv_sec = cur_time.tv_sec;
+
+            fprintf(stderr, "Will restart all USB devices\n");
+            usb_monitor_reset_all_ports(ctx);
+        }
+    }
 
     libusb_exit(NULL);
     exit(EXIT_SUCCESS);
