@@ -26,9 +26,11 @@ struct hub_descriptor {
 
 uint8_t usb_helpers_get_num_ports(libusb_device *hub_device);
 //Generic function for starting a timer
-void usb_helpers_start_timeout(struct usb_port *port);
+void usb_helpers_start_timeout(struct usb_port *port, uint8_t timeout_sec);
 
 //Reset a usb_port struct, close handle, etc.
 void usb_helpers_reset_port(struct usb_port *port);
 
+//Sending ping is generic
+void usb_helpers_send_ping(struct usb_port *port);
 #endif

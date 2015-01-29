@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <assert.h>
 #include <sys/time.h>
 
 #include "usb_monitor.h"
@@ -55,7 +55,7 @@ static void ykush_reset_cb(struct libusb_transfer *transfer)
             fprintf(stdout, "YKUSH port %u is switched on again\n", yport->port_num);
             yport->msg_mode = IDLE;
         } else {
-            usb_helpers_start_timeout((struct usb_port*) yport);
+            usb_helpers_start_timeout((struct usb_port*) yport, DEFAULT_TIMEOUT_SEC);
         }
     }
 }
@@ -117,7 +117,7 @@ static void ykush_update_port(struct usb_port *port)
 
     if (transfer == NULL) {
         fprintf(stderr, "Could not allocate trasnfer\n");
-        usb_helpers_start_timeout(port);
+        usb_helpers_start_timeout(port, DEFAULT_TIMEOUT_SEC);
         return;
     }
 
@@ -137,86 +137,7 @@ static void ykush_update_port(struct usb_port *port)
     if (libusb_submit_transfer(transfer)) {
         fprintf(stderr, "Failed to submit transfer\n");
         libusb_free_transfer(transfer);
-        usb_helpers_start_timeout(port);
-        return;
-    }
-}
-
-static void ykush_ping_cb(struct libusb_transfer *transfer)
-{
-    struct ykush_port *yport = transfer->user_data;
-
-    //With asynchrnous reset requests, we might be waiting for a "ping" reply
-    //when reset is requested. If this happens and reply arrives before device
-    //is removed, ignore ping reply
-    if (yport->msg_mode != PING)
-        return;
-
-    if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
-        fprintf(stderr, "Ping failed for %.4x:%.4x\n", yport->vid, yport->pid);
-        yport->num_retrans++;
-
-        if (yport->num_retrans == USB_RETRANS_LIMIT) {
-            ykush_update_port((struct usb_port*) yport);
-            return;
-        }
-    } else {
-        yport->num_retrans = 0;
-    }
-
-    //ykush_print_port((struct usb_port*) yport);
-    //We can only get into this function after timeout has been handeled and
-    //removed from timeout list. It is therefore safe to add the port to the
-    //timeout list again
-    usb_helpers_start_timeout((struct usb_port*) yport);
-}
-
-//TODO: Make function generic, only custom argument is the callback
-static void ykush_send_ping(struct ykush_port *yport)
-{
-    struct libusb_transfer *transfer;
-
-    //No multiple call guard is needed here. Ping can only be called from
-    //timeout
-    if (yport->dev_handle == NULL) {
-        if (libusb_open(yport->dev, &(yport->dev_handle))) {
-            fprintf(stderr, "Failed to open handle\n");
-            usb_helpers_start_timeout((struct usb_port*) yport);
-            return;
-        }
-    }
-
-    //Follow the steps of the libusb async manual
-    transfer = libusb_alloc_transfer(0);
-
-    if (transfer == NULL) {
-        fprintf(stderr, "Could not allocate trasnfer\n");
-        usb_helpers_start_timeout((struct usb_port*) yport);
-        return;
-    }
-
-    //Use flags to save us from adding som basic logic
-    transfer->flags = LIBUSB_TRANSFER_SHORT_NOT_OK |
-                      LIBUSB_TRANSFER_FREE_TRANSFER;
-
-    libusb_fill_control_setup(yport->ping_buf,
-                              0x80,
-                              0x00,
-                              0x00,
-                              0x00,
-                              0x02);
-
-    libusb_fill_control_transfer(transfer,
-                                 yport->dev_handle,
-                                 yport->ping_buf,
-                                 ykush_ping_cb,
-                                 yport,
-                                 5000);
-
-    if (libusb_submit_transfer(transfer)) {
-        fprintf(stderr, "Failed to submit transfer\n");
-        libusb_free_transfer(transfer);
-        usb_helpers_start_timeout((struct usb_port*) yport);
+        usb_helpers_start_timeout(port, DEFAULT_TIMEOUT_SEC);
         return;
     }
 }
@@ -224,7 +145,7 @@ static void ykush_send_ping(struct ykush_port *yport)
 static void ykush_handle_timeout(struct usb_port *port)
 {
     if (port->msg_mode == PING)
-        ykush_send_ping((struct ykush_port*) port);
+        usb_helpers_send_ping(port);
     else
         ykush_update_port(port);
 }
@@ -248,11 +169,17 @@ static uint8_t ykush_configure_hub(struct ykush_hub *yhub)
     }
 
     //Set up com device
-    //TODO: Error handling!
-    libusb_open(yhub->comm_dev, &(yhub->comm_handle));
-    libusb_detach_kernel_driver(yhub->comm_handle, 0);
-    libusb_set_configuration(yhub->comm_handle, 1);
-    libusb_claim_interface(yhub->comm_handle, 0);
+    //TODO: Proper error handling
+    if (libusb_open(yhub->comm_dev, &(yhub->comm_handle)) ||
+        libusb_detach_kernel_driver(yhub->comm_handle, 0) ||
+        libusb_set_configuration(yhub->comm_handle, 1) ||
+        libusb_claim_interface(yhub->comm_handle, 0)) {
+        //One way to handle this error case would be to every X second iterate
+        //through all devices seen by libusb and try to re-configure the devices
+        //that are missing
+        fprintf(stderr, "Failed to configure hub\n");
+        assert(0);
+    }
 
     yhub->num_ports = num_ports;
 

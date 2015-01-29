@@ -63,8 +63,11 @@ void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
 
     usb_monitor_print_ports(ctx);
 
-    //Whenever we detect a device, we need to add to timeout to send ping
-    usb_helpers_start_timeout(port);
+    //Whenever we detect a device, we need to add to timeout to send ping.
+    //However, we need to wait longer than the initial five seconds to let
+    //usb_modeswitch potentially works its magic
+    //TODO: Do not use magic value
+    usb_helpers_start_timeout(port, DEFAULT_TIMEOUT_SEC);
 }
 
 static void usb_device_removed(struct usb_monitor_ctx *ctx, libusb_device *dev)

@@ -8,6 +8,7 @@
 struct usb_port;
 
 #define DEFAULT_TIMEOUT_SEC 5
+#define ADDED_TIMEOUT_SEC 10
 #define USB_RETRANS_LIMIT 5
 
 //port function pointers

@@ -15,6 +15,14 @@ void usb_monitor_lists_add_port(struct usb_monitor_ctx *ctx, struct usb_port *po
 void usb_monitor_lists_del_port(struct usb_port *port)
 {
     LIST_REMOVE(port, port_next);
+
+    //This is a work-around for an issue where a hub is removed while ports
+    //are being reset. Resetting depends on the timer for sending the second
+    //message, or retransmitting a message. When a device goes down, we
+    //should not remove the port from the timeout list, or the message for
+    //turning the port on again will never be sent. However, when hub goes
+    //down, ignore whatever mode port is in and set mode to IDLE
+    port->msg_mode = IDLE;
     usb_helpers_reset_port(port);
 
     //LIST_REMOVE does not set pointers to NULL after an element is removed.
