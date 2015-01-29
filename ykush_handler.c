@@ -85,7 +85,7 @@ static void ykush_update_port(struct usb_port *port)
         yport->timeout_next.le_prev != NULL) {
             fprintf(stdout, "Will delete:\n");
             ykush_print_port((struct usb_port*) yport);
-            usb_monitor_del_timeout((struct usb_port*) yport);
+            usb_monitor_lists_del_timeout((struct usb_port*) yport);
     }
 
     switch (yport->port_num) {
@@ -277,7 +277,7 @@ static uint8_t ykush_configure_hub(struct ykush_hub *yhub)
         yhub->port[i].timeout = ykush_handle_timeout;
         
         //Insert port into global list
-        usb_monitor_add_port(yhub->ctx, (struct usb_port*) &(yhub->port[i]));
+        usb_monitor_lists_add_port(yhub->ctx, (struct usb_port*) &(yhub->port[i]));
     }
 
     return num_ports;
@@ -292,7 +292,7 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
     //First step, get parent device and check if we already have it in the list
     libusb_device *parent = libusb_get_parent(device);
    
-    if (usb_monitor_find_hub(usbmon_ctx, parent)) {
+    if (usb_monitor_lists_find_hub(usbmon_ctx, parent)) {
         fprintf(stderr, "Hub already found in list\n");
         return;
     }
@@ -322,7 +322,7 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
         libusb_unref_device(yhub->comm_dev);
         free(yhub);
     } else {
-        usb_monitor_add_hub(yhub->ctx, (struct usb_hub*) yhub);
+        usb_monitor_lists_add_hub(yhub->ctx, (struct usb_hub*) yhub);
     }
 }
 
@@ -332,7 +332,7 @@ static void ykush_del_device(libusb_context *ctx, libusb_device *device,
     struct usb_monitor_ctx *usbmon_ctx = user_data;
     struct libusb_device *parent = libusb_get_parent(device);
     struct ykush_hub *yhub = (struct ykush_hub*)
-                             usb_monitor_find_hub(usbmon_ctx, parent);
+                             usb_monitor_lists_find_hub(usbmon_ctx, parent);
     uint8_t i;
 
     if (yhub == NULL) {
@@ -348,9 +348,9 @@ static void ykush_del_device(libusb_context *ctx, libusb_device *device,
     libusb_unref_device(yhub->comm_dev);
 
     for (i = 0; i < yhub->num_ports; i++)
-        usb_monitor_del_port((struct usb_port*) &(yhub->port[i]));
+        usb_monitor_lists_del_port((struct usb_port*) &(yhub->port[i]));
 
-    usb_monitor_del_hub((struct usb_hub*) yhub);
+    usb_monitor_lists_del_hub((struct usb_hub*) yhub);
     free(yhub);
 }
 

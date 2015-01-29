@@ -50,7 +50,7 @@ void usb_helpers_start_timeout(struct usb_port *port)
 
     gettimeofday(&tv, NULL);
     port->timeout_expire = ((tv.tv_sec + DEFAULT_TIMEOUT_SEC) * 1e6) + tv.tv_usec;
-    usb_monitor_add_timeout(port->parent->ctx, port);
+    usb_monitor_lists_add_timeout(port->parent->ctx, port);
 }
 
 void usb_helpers_reset_port(struct usb_port *port)
@@ -74,7 +74,7 @@ void usb_helpers_reset_port(struct usb_port *port)
         if (port->msg_mode != RESET &&
             (port->timeout_next.le_next != NULL ||
             port->timeout_next.le_prev != NULL))
-            usb_monitor_del_timeout(port);
+            usb_monitor_lists_del_timeout(port);
 
         libusb_unref_device(port->dev);
     }

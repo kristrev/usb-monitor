@@ -7,12 +7,12 @@
 #include "usb_helpers.h"
 
 /* Port list functions. No need for a find since these do not depend on events */
-void usb_monitor_add_port(struct usb_monitor_ctx *ctx, struct usb_port *port)
+void usb_monitor_lists_add_port(struct usb_monitor_ctx *ctx, struct usb_port *port)
 {
     LIST_INSERT_HEAD(&(ctx->port_list), port, port_next);
 }
 
-void usb_monitor_del_port(struct usb_port *port)
+void usb_monitor_lists_del_port(struct usb_port *port)
 {
     LIST_REMOVE(port, port_next);
     usb_helpers_reset_port(port);
@@ -24,8 +24,8 @@ void usb_monitor_del_port(struct usb_port *port)
     port->port_next.le_prev = NULL;
 }
 
-struct usb_port *usb_monitor_find_port_path(struct usb_monitor_ctx *ctx,
-                                            libusb_device *dev)
+struct usb_port *usb_monitor_lists_find_port_path(struct usb_monitor_ctx *ctx,
+                                                 libusb_device *dev)
 {
     uint8_t path[8];
     int32_t num_port_numbers;
@@ -48,12 +48,12 @@ struct usb_port *usb_monitor_find_port_path(struct usb_monitor_ctx *ctx,
     return itr;
 }
 
-void usb_monitor_add_timeout(struct usb_monitor_ctx *ctx, struct usb_port *port)
+void usb_monitor_lists_add_timeout(struct usb_monitor_ctx *ctx, struct usb_port *port)
 {
     LIST_INSERT_HEAD(&(ctx->timeout_list), port, timeout_next);
 }
 
-void usb_monitor_del_timeout(struct usb_port *port)
+void usb_monitor_lists_del_timeout(struct usb_port *port)
 {
     LIST_REMOVE(port, timeout_next);
     port->timeout_next.le_next = NULL;
@@ -61,7 +61,7 @@ void usb_monitor_del_timeout(struct usb_port *port)
 }
 
 /* HUB list functions  */
-void usb_monitor_add_hub(struct usb_monitor_ctx *ctx, struct usb_hub *hub)
+void usb_monitor_lists_add_hub(struct usb_monitor_ctx *ctx, struct usb_hub *hub)
 {
     ssize_t cnt, i;
     libusb_device **list, *dev;
@@ -86,7 +86,7 @@ void usb_monitor_add_hub(struct usb_monitor_ctx *ctx, struct usb_hub *hub)
     libusb_free_device_list(list, 1);
 }
 
-void usb_monitor_del_hub(struct usb_hub *hub)
+void usb_monitor_lists_del_hub(struct usb_hub *hub)
 {
     LIST_REMOVE(hub, hub_next);
     hub->hub_next.le_next = NULL;
@@ -94,7 +94,7 @@ void usb_monitor_del_hub(struct usb_hub *hub)
 
 }
 
-struct usb_hub* usb_monitor_find_hub(struct usb_monitor_ctx *ctx,
+struct usb_hub* usb_monitor_lists_find_hub(struct usb_monitor_ctx *ctx,
                                      libusb_device *hub)
 {
     struct usb_hub *itr = ctx->hub_list.lh_first;

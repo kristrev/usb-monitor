@@ -38,7 +38,7 @@ static void usb_monitor_reset_all_ports(struct usb_monitor_ctx *ctx)
 void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
 {
     //Check if device is connected to a port we control
-    struct usb_port *port = usb_monitor_find_port_path(ctx, dev);
+    struct usb_port *port = usb_monitor_lists_find_port_path(ctx, dev);
     struct libusb_device_descriptor desc;
 
     if (!port)
@@ -69,7 +69,7 @@ void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
 
 static void usb_device_removed(struct usb_monitor_ctx *ctx, libusb_device *dev)
 {
-    struct usb_port *port = usb_monitor_find_port_path(ctx, dev);
+    struct usb_port *port = usb_monitor_lists_find_port_path(ctx, dev);
 
     if (!port)
         return;
@@ -123,7 +123,7 @@ static void usb_monitor_check_timeouts(struct usb_monitor_ctx *ctx)
             old_timeout = timeout_itr;
             timeout_itr = timeout_itr->timeout_next.le_next;
 
-            usb_monitor_del_timeout(old_timeout);
+            usb_monitor_lists_del_timeout(old_timeout);
             old_timeout->timeout(old_timeout);
         } else {
             timeout_itr = timeout_itr->timeout_next.le_next;
