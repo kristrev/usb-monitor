@@ -5,6 +5,7 @@
 #include <libusb-1.0/libusb.h>
 
 struct usb_port;
+struct usb_monitor_ctx;
 
 struct hub_descriptor {
     uint8_t bDescLength; // descriptor length
@@ -33,4 +34,8 @@ void usb_helpers_reset_port(struct usb_port *port);
 
 //Sending ping is generic
 void usb_helpers_send_ping(struct usb_port *port);
+
+//Iterate through devices and call add for each of them. Used in case hub config
+//fails, for example
+void usb_helpers_check_devices(struct usb_monitor_ctx *ctx);
 #endif

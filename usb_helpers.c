@@ -184,3 +184,29 @@ void usb_helpers_send_ping(struct usb_port *port)
         return;
     }
 }
+
+void usb_helpers_check_devices(struct usb_monitor_ctx *ctx)
+{
+    ssize_t cnt, i;
+    libusb_device **list, *dev;
+
+    //TODO: Make helper function
+    //Whenever we add a hub, we also need to iterate through the list of devices
+    //and see if we are aware of any that are connected
+    cnt = libusb_get_device_list(NULL, &list);
+
+    if (cnt < 0) {
+        fprintf(stderr, "Failed to get device list\n");
+        //This function is also called from timeout, so if we ever fail to get
+        //list, we will just try again later
+        return;
+    }
+
+    for (i = 0; i<cnt; i++) {
+        dev = list[i];
+        usb_device_added(ctx, dev);
+    }
+
+    libusb_free_device_list(list, 1);
+
+}

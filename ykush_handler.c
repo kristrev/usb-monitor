@@ -155,7 +155,7 @@ static uint8_t ykush_configure_hub(struct ykush_hub *yhub)
     uint8_t num_ports = usb_helpers_get_num_ports(yhub->hub_dev);
     uint8_t i;
     uint8_t comm_path[8];
-    int32_t num_port_numbers = 0;
+    int32_t num_port_numbers = 0, retval = 0;
 
     if (!num_ports)
         return 0;
@@ -169,16 +169,32 @@ static uint8_t ykush_configure_hub(struct ykush_hub *yhub)
     }
 
     //Set up com device
-    //TODO: Proper error handling
-    if (libusb_open(yhub->comm_dev, &(yhub->comm_handle)) ||
-        libusb_detach_kernel_driver(yhub->comm_handle, 0) ||
-        libusb_set_configuration(yhub->comm_handle, 1) ||
-        libusb_claim_interface(yhub->comm_handle, 0)) {
-        //One way to handle this error case would be to every X second iterate
-        //through all devices seen by libusb and try to re-configure the devices
-        //that are missing
-        fprintf(stderr, "Failed to configure hub\n");
-        assert(0);
+    retval = libusb_open(yhub->comm_dev, &(yhub->comm_handle));
+    if (retval) {
+        fprintf(stdout, "Open failed: %s\n", libusb_error_name(retval));
+        return 0;
+    }
+
+    retval = libusb_detach_kernel_driver(yhub->comm_handle, 0);
+    //This error is not critical, it just means that there was no driver
+    if (retval && retval != LIBUSB_ERROR_NOT_FOUND) {
+        fprintf(stdout, "Detatch failed: %s\n", libusb_error_name(retval));
+        libusb_close(yhub->comm_handle);
+        return 0;
+    }
+
+    retval = libusb_set_configuration(yhub->comm_handle, 1);
+    if (retval) {
+        fprintf(stdout, "Config failed: %s\n", libusb_error_name(retval));
+        libusb_close(yhub->comm_handle);
+        return 0;
+    }
+
+    retval = libusb_claim_interface(yhub->comm_handle, 0);
+    if (retval) {
+        fprintf(stdout, "Claim failed: %s\n", libusb_error_name(retval));
+        libusb_close(yhub->comm_handle);
+        return 0;
     }
 
     yhub->num_ports = num_ports;
@@ -219,10 +235,8 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
     //First step, get parent device and check if we already have it in the list
     libusb_device *parent = libusb_get_parent(device);
    
-    if (usb_monitor_lists_find_hub(usbmon_ctx, parent)) {
-        fprintf(stderr, "Hub already found in list\n");
+    if (usb_monitor_lists_find_hub(usbmon_ctx, parent))
         return;
-    }
 
     yhub = malloc(sizeof(struct ykush_hub));
 
