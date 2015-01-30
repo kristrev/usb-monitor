@@ -12,7 +12,7 @@
 
 static void ykush_update_port(struct usb_port *port);
 
-/* TODO: This function is generic  */
+/* TODO: Parts of this function is generic, split in two */
 static void ykush_print_port(struct usb_port *port)
 {
     int i;
@@ -70,10 +70,6 @@ static void ykush_update_port(struct usb_port *port)
     //Prevent resetting port multiple times. msg_mode is only set to reset when
     //we call this function, and unset when a reset is done. This guard is
     //needed when we add support for async reset notifications
-    //TODO: This guard need to be in the async handler!
-    /*if (yport->msg_mode == RESET)
-        return;*/
-
     yport->msg_mode = RESET;
 
     //For asynchrnous resets (i.e., resets triggered by something else than our
@@ -150,7 +146,8 @@ static void ykush_handle_timeout(struct usb_port *port)
         ykush_update_port(port);
 }
 
-static uint8_t ykush_configure_hub(struct ykush_hub *yhub)
+static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
+                                   struct ykush_hub *yhub)
 {
     uint8_t num_ports = usb_helpers_get_num_ports(yhub->hub_dev);
     uint8_t i;
@@ -218,9 +215,10 @@ static uint8_t ykush_configure_hub(struct ykush_hub *yhub)
         yhub->port[i].output = ykush_print_port;
         yhub->port[i].update = ykush_update_port;
         yhub->port[i].timeout = ykush_handle_timeout;
+        yhub->port[i].ctx = ctx;
         
         //Insert port into global list
-        usb_monitor_lists_add_port(yhub->ctx, (struct usb_port*) &(yhub->port[i]));
+        usb_monitor_lists_add_port(ctx, (struct usb_port*) &(yhub->port[i]));
     }
 
     return num_ports;
@@ -253,17 +251,16 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
 
     printf("Added new YKUSH hub\n");
 
-    yhub->ctx = usbmon_ctx;
     yhub->hub_dev = parent;
     yhub->comm_dev = device;
 
     //TODO: Check error code
-    if (!ykush_configure_hub(yhub)) {
+    if (!ykush_configure_hub(usbmon_ctx, yhub)) {
         libusb_unref_device(yhub->hub_dev);
         libusb_unref_device(yhub->comm_dev);
         free(yhub);
     } else {
-        usb_monitor_lists_add_hub(yhub->ctx, (struct usb_hub*) yhub);
+        usb_monitor_lists_add_hub(usbmon_ctx, (struct usb_hub*) yhub);
     }
 }
 

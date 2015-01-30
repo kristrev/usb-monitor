@@ -20,12 +20,13 @@ typedef void (*handle_timeout)(struct usb_port *port);
 //new hubs are added
 #define USB_HUB_MANDATORY \
     libusb_device *hub_dev; \
-    struct usb_monitor_ctx *ctx; \
     LIST_ENTRY(usb_hub) hub_next
 
 //Size of path is 8 since it is bus + max depth (7)
+//parent might be NULL
 #define USB_PORT_MANDATORY \
     struct usb_hub *parent; \
+    struct usb_monitor_ctx *ctx; \
     libusb_device *dev; \
     libusb_device_handle *dev_handle;\
     print_port output; \

@@ -10,6 +10,7 @@
 #include "ykush_handler.h"
 #include "usb_monitor_lists.h"
 #include "usb_helpers.h"
+#include "gpio_handler.h"
 
 static void usb_monitor_print_ports(struct usb_monitor_ctx *ctx)
 {
@@ -27,8 +28,8 @@ static void usb_monitor_reset_all_ports(struct usb_monitor_ctx *ctx)
 
     LIST_FOREACH(itr, &(ctx->port_list), port_next) {
         //Only restart which are not connected and are currently not being reset
-        if (itr->status == PORT_NO_DEV_CONNECTED &&
-            itr->msg_mode != RESET)
+        /*if (itr->status == PORT_NO_DEV_CONNECTED &&
+            itr->msg_mode != RESET)*/
             itr->update(itr);
     }
 }
@@ -157,6 +158,7 @@ int main(int argc, char *argv[])
     int retval = 0;
     struct timeval tv = {1,0};
     struct timeval last_restart, last_dev_check, cur_time;
+    char path_1[] = "1-1", path_2[] = "2-1";
 
     ctx = malloc(sizeof(struct usb_monitor_ctx));
 
@@ -175,7 +177,11 @@ int main(int argc, char *argv[])
                 libusb_error_name(retval));
         exit(EXIT_FAILURE);
     }
-    
+
+    //Add gpio ports
+    gpio_handler_add_port(ctx, path_1, 22);
+    gpio_handler_add_port(ctx, path_2, 21);
+
     libusb_hotplug_register_callback(NULL,
                                      LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED |
                                      LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT,
@@ -186,23 +192,26 @@ int main(int argc, char *argv[])
                                      usb_monitor_cb,
                                      ctx, NULL);
 
+    fprintf(stdout, "Initial state:\n");
+    usb_monitor_print_ports(ctx);
+
     gettimeofday(&last_restart, NULL);
     gettimeofday(&last_dev_check, NULL);
     //For now, just use the libusb wait-function as a basic event loop
     while (1) {
         libusb_handle_events_timeout_completed(NULL, &tv, NULL);
-
+        
         //Check if we have any pending timeouts
         usb_monitor_check_timeouts(ctx);
 
         gettimeofday(&cur_time, NULL);
 
         //Do not run both checkes at the same time
-        if (cur_time.tv_sec - last_dev_check.tv_sec > 30) {
+        /*if (cur_time.tv_sec - last_dev_check.tv_sec > 30) {
             last_dev_check.tv_sec = cur_time.tv_sec;
             fprintf(stderr, "Will check for lost devices\n");
             usb_helpers_check_devices(ctx);
-        } else if (cur_time.tv_sec - last_restart.tv_sec > 60) {
+        } else*/ if (cur_time.tv_sec - last_restart.tv_sec > 30) {
             last_restart.tv_sec = cur_time.tv_sec;
 
             fprintf(stderr, "Will restart all USB devices\n");

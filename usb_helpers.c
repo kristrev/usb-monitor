@@ -50,7 +50,7 @@ void usb_helpers_start_timeout(struct usb_port *port, uint8_t timeout_sec)
 
     gettimeofday(&tv, NULL);
     port->timeout_expire = ((tv.tv_sec + timeout_sec) * 1e6) + tv.tv_usec;
-    usb_monitor_lists_add_timeout(port->parent->ctx, port);
+    usb_monitor_lists_add_timeout(port->ctx, port);
 }
 
 void usb_helpers_reset_port(struct usb_port *port)
