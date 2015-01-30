@@ -28,8 +28,8 @@ static void usb_monitor_reset_all_ports(struct usb_monitor_ctx *ctx)
 
     LIST_FOREACH(itr, &(ctx->port_list), port_next) {
         //Only restart which are not connected and are currently not being reset
-        /*if (itr->status == PORT_NO_DEV_CONNECTED &&
-            itr->msg_mode != RESET)*/
+        if (itr->status == PORT_NO_DEV_CONNECTED &&
+            itr->msg_mode != RESET)
             itr->update(itr);
     }
 }
@@ -207,14 +207,11 @@ int main(int argc, char *argv[])
         gettimeofday(&cur_time, NULL);
 
         //Do not run both checkes at the same time
-        /*if (cur_time.tv_sec - last_dev_check.tv_sec > 30) {
+        if (cur_time.tv_sec - last_dev_check.tv_sec > 30) {
             last_dev_check.tv_sec = cur_time.tv_sec;
-            fprintf(stderr, "Will check for lost devices\n");
             usb_helpers_check_devices(ctx);
-        } else*/ if (cur_time.tv_sec - last_restart.tv_sec > 30) {
+        } else if (cur_time.tv_sec - last_restart.tv_sec > 60) {
             last_restart.tv_sec = cur_time.tv_sec;
-
-            fprintf(stderr, "Will restart all USB devices\n");
             usb_monitor_reset_all_ports(ctx);
         }
     }
