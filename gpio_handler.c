@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <json-c/json.h>
 
 #include "gpio_handler.h"
 #include "usb_monitor_lists.h"
@@ -135,7 +136,7 @@ uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx, char *path,
 
     if (i == 8 && cur_val != NULL) {
         printf("Incorrect path\n");
-        return 0;
+        return 1;
     } else {
         path_len = i;
     }
@@ -158,6 +159,44 @@ uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx, char *path,
     port->ctx = ctx;
 
     usb_monitor_lists_add_port(ctx, (struct usb_port*) port);
+
+    return 0;
+}
+
+uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
+                                struct json_object *json)
+{
+    int json_arr_len = json_object_array_length(json);
+    struct json_object *json_port;
+    int i;
+    char *path = NULL;
+    uint8_t gpio_num = -1, unknown = 0;
+
+    for (i = 0; i < json_arr_len; i++) {
+        json_port = json_object_array_get_idx(json, i); 
+
+        json_object_object_foreach(json_port, key, val) {
+            if (!strcmp(key, "path")) {
+                path = (char*) json_object_get_string(val);
+                continue;
+            } else if (!strcmp(key, "gpio_num")) {
+                gpio_num = (uint8_t) json_object_get_int(val);
+                continue;
+            } else {
+                unknown = 1;
+                break;
+            }
+        }
+
+        if (path == NULL || gpio_num == -1 || unknown)
+            return 1;
+        
+        USB_DEBUG_PRINT(ctx->logfile, "Read following GPIO from config %s (%u)\n", path, gpio_num);
+
+        if (gpio_handler_add_port(ctx, path, gpio_num)) {
+            return 1;
+        }
+    }
 
     return 0;
 }

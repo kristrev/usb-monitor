@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 2.6)
 project(usb_monitor)
 
 set(CMAKE_C_FLAGS "-O1 -Wall -g")
-set(LIBS usb-1.0)
+set(LIBS usb-1.0 json-c)
 
 add_executable(usb_monitor
                usb_helpers.c

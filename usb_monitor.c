@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <string.h>
+#include <json-c/json.h>
 
 #include <libusb-1.0/libusb.h>
 
@@ -153,28 +155,142 @@ static void usb_monitor_check_timeouts(struct usb_monitor_ctx *ctx)
     }
 }
 
+static uint8_t usb_monitor_parse_handlers(struct usb_monitor_ctx *ctx,
+                                          struct json_object *handlers)
+{
+    int handlers_len = 0, i;
+    uint8_t unknown_elem = 0;
+    const char *handler_name = NULL;
+    struct json_object *arr_obj, *handler_obj = NULL;
+    
+    handlers_len = json_object_array_length(handlers);
+
+    for (i = 0; i < handlers_len; i++) {
+        handler_name = NULL;
+        handler_obj = NULL;
+
+        arr_obj = json_object_array_get_idx(handlers, i);
+
+        json_object_object_foreach(arr_obj, key, val) {
+            if (!strcmp(key, "name")) {
+                handler_name = json_object_get_string(val);
+                continue;
+            } else if(!strcmp(key, "ports")) {
+                handler_obj = val;
+                continue;
+            } else {
+                unknown_elem = 1;
+                break;
+            }
+        }
+
+        if (handler_name == NULL || handler_obj == NULL || unknown_elem) {
+            fprintf(stderr, "Incorrect handler object found in JSON\n");
+            return 1;
+        }
+
+        if (!strcmp("GPIO", handler_name)) {
+            if (gpio_handler_parse_json(ctx, handler_obj))
+                return 1;
+        } else {
+            fprintf(stderr, "Unknown handler in JSON\n");
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+//Return 0 on success, 1 on failure
+static uint8_t usb_monitor_parse_config(struct usb_monitor_ctx *ctx,
+                                        const char *config_file_name)
+{
+    //Limit the number of bytes we read from file
+    char buf[1024];
+    FILE *conf_file;
+    //TODO: Clean up a bit here
+    struct json_object *conf_json, *top_value;
+    struct lh_entry *obj_table;
+    int retval = 0;
+    const char *obj_name;
+
+    memset(buf, 0, sizeof(buf));
+    conf_file = fopen(config_file_name, "re");
+
+    if (conf_file == NULL) {
+        fprintf(stderr, "Failed to open config file\n");
+        return 1;
+    }
+
+    retval = fread(buf, 1, 1024, conf_file);
+
+    if (retval != sizeof(buf) &&
+        ferror(conf_file)) {
+        fprintf(stderr, "Failed to read from config file\n");
+        fclose(conf_file);
+        return 1;
+    } else {
+        fclose(conf_file);
+    }
+
+    //Parse JSON
+    conf_json = json_tokener_parse(buf);
+
+    if (conf_json == NULL) {
+        fprintf(stderr, "Failed to parse JSON\n");
+        return 1;
+    }
+
+    obj_table = json_object_get_object(conf_json)->head;
+    obj_name = (char*) obj_table->k;
+
+    if (strcmp("handlers", obj_name)) {
+        fprintf(stderr, "Found unknown top-level object in JSON\n");
+        json_object_put(conf_json);
+        return 1;
+    }
+
+    //Iterate through the handlers
+    top_value = (struct json_object *) obj_table->v;
+
+    if (json_object_get_type(top_value) != json_type_array) {
+        fprintf(stderr, "Incorrect value for top-leve value\n");
+        json_object_put(conf_json);
+        return 1;
+    }
+
+    retval = usb_monitor_parse_handlers(ctx, top_value);
+
+    json_object_put(conf_json);
+    
+    return retval;
+}
+
 int main(int argc, char *argv[])
 {
     struct usb_monitor_ctx *ctx = NULL;
     int retval = 0;
     struct timeval tv = {1,0};
     struct timeval last_restart, last_dev_check, cur_time;
-    char path_1[] = "1-1", path_2[] = "2-1";
     uint8_t daemonize = 0;
+    char *conf_file_name = NULL;
 
     ctx = malloc(sizeof(struct usb_monitor_ctx));
 
     if (ctx == NULL) {
-        USB_DEBUG_PRINT(stderr, "Failed to allocated application context struct\n");
+        fprintf(stderr, "Failed to allocated application context struct\n");
         exit(EXIT_FAILURE);
     }
     
     ctx->logfile = stderr;
 
-    while ((retval = getopt(argc, argv, "o:d")) != -1) {
+    while ((retval = getopt(argc, argv, "o:c:d")) != -1) {
         switch (retval) {
         case 'o':
             ctx->logfile = fopen(optarg, "w+");  
+            break;
+        case 'c':
+            conf_file_name = optarg;
             break;
         case 'd':
             daemonize = 1;
@@ -187,25 +303,31 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    if (daemonize && daemon(1,1)) {
-        fprintf(stderr, "Failed to start usb-monitor as daemon\n");
-        exit(EXIT_FAILURE);
-    }
-
     LIST_INIT(&(ctx->hub_list));
     LIST_INIT(&(ctx->port_list));
     LIST_INIT(&(ctx->timeout_list));
 
+    if (conf_file_name != NULL &&
+        usb_monitor_parse_config(ctx, conf_file_name)) {
+        fprintf(stderr, "Failed to read config file\n");
+        fclose(ctx->logfile);
+        exit(EXIT_FAILURE);
+    }
+    
     retval = libusb_init(NULL);
     if (retval) {
-        USB_DEBUG_PRINT(ctx->logfile, "libusb failed with error %s\n",
+        fprintf(stderr, "libusb failed with error %s\n",
                 libusb_error_name(retval));
+        fclose(ctx->logfile);
         exit(EXIT_FAILURE);
     }
 
-    //Add gpio ports
-    gpio_handler_add_port(ctx, path_1, 22);
-    gpio_handler_add_port(ctx, path_2, 21);
+    if (daemonize && daemon(1,1)) {
+        fprintf(stderr, "Failed to start usb-monitor as daemon\n");
+        fclose(ctx->logfile);
+        libusb_exit(NULL);
+        exit(EXIT_FAILURE);
+    }
 
     libusb_hotplug_register_callback(NULL,
                                      LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED |
