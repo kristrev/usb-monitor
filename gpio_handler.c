@@ -10,6 +10,7 @@
 #include "gpio_handler.h"
 #include "usb_monitor_lists.h"
 #include "usb_helpers.h"
+#include "usb_logging.h"
 
 static void gpio_print_port(struct usb_port *port)
 {
@@ -17,20 +18,20 @@ static void gpio_print_port(struct usb_port *port)
     struct libusb_device_descriptor desc;
     struct gpio_port *gport = (struct gpio_port*) port;
 
-    fprintf(stdout, "Type: GPIO Path: ");
+    USB_DEBUG_PRINT(port->ctx->logfile, "Type: GPIO Path: ");
 
     for (i = 0; i < gport->path_len-1; i++)
-        fprintf(stdout, "%u-", gport->path[i]);
+        fprintf(port->ctx->logfile, "%u-", gport->path[i]);
 
-    fprintf(stdout, "%u State: %u Pwr: %u Gpio: %u ", gport->path[i],
+    fprintf(port->ctx->logfile, "%u State: %u Pwr: %u Gpio: %u ", gport->path[i],
             gport->status, gport->pwr_state, gport->gpio_num);
 
     if (gport->dev) {
         libusb_get_device_descriptor(gport->dev, &desc);
-        fprintf(stdout, " Device: %.4x:%.4x", desc.idVendor, desc.idProduct);
+        fprintf(port->ctx->logfile, " Device: %.4x:%.4x", desc.idVendor, desc.idProduct);
     }
 
-    fprintf(stdout, "\n");
+    fprintf(port->ctx->logfile, "\n");
 }
 
 static void gpio_update_port(struct usb_port *port)
@@ -50,7 +51,7 @@ static void gpio_update_port(struct usb_port *port)
     //timeout (there is no USB timer), we create infinite loop and that is that
     if (gport->timeout_next.le_next != NULL ||
         gport->timeout_next.le_prev != NULL) {
-            fprintf(stdout, "Will delete:\n");
+            USB_DEBUG_PRINT(port->ctx->logfile, "Will delete:\n");
             gpio_print_port((struct usb_port*) gport);
             usb_monitor_lists_del_timeout((struct usb_port*) gport);
     }
@@ -62,12 +63,12 @@ static void gpio_update_port(struct usb_port *port)
     //Do a write, if write is successful then we update power state
     snprintf(file_path, sizeof(file_path), "/sys/class/gpio/gpio%u/value", gport->gpio_num);
 
-    fprintf(stderr, "Will write %u to %s\n", gpio_val, file_path);
+    USB_DEBUG_PRINT(port->ctx->logfile, "Will write %u to %s\n", gpio_val, file_path);
     
     fd = open(file_path, O_WRONLY | FD_CLOEXEC);
 
     if (fd == -1) {
-        fprintf(stderr, "Failed to open gpio file\n");
+        USB_DEBUG_PRINT(port->ctx->logfile, "Failed to open gpio file\n");
         usb_helpers_start_timeout((struct usb_port*) gport, DEFAULT_TIMEOUT_SEC);
         return;
     }
@@ -83,7 +84,7 @@ static void gpio_update_port(struct usb_port *port)
         gport->pwr_state = !gport->pwr_state;
 
         if (gport->pwr_state) {
-            fprintf(stdout, "GPIO %u switched on again\n", gport->gpio_num);
+            USB_DEBUG_PRINT(port->ctx->logfile, "GPIO %u switched on again\n", gport->gpio_num);
             gport->msg_mode = IDLE;
             return;
         }
@@ -97,7 +98,7 @@ static void gpio_update_port(struct usb_port *port)
    
     //TODO: How to check if we are done? If we get here, and inverse of
     //power_state is off, then we have switched? Or?
-    //fprintf(stderr, "GPIO update\n");
+    //USB_DEBUG_PRINT(stderr, "GPIO update\n");
 }
 
 static void gpio_handle_timeout(struct usb_port *port)
@@ -131,15 +132,17 @@ uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx, char *path,
         cur_val = strtok(NULL, "-");
     }
 
-    if (i == 8 && cur_val != NULL)
+    if (i == 8 && cur_val != NULL) {
         printf("Incorrect path\n");
-    else
+        return 0;
+    } else {
         path_len = i;
+    }
 
     port = malloc(sizeof(struct gpio_port));
     
     if (port == NULL) {
-        fprintf(stderr, "Could not allocate memory for gpio port\n");
+        USB_DEBUG_PRINT(ctx->logfile, "Could not allocate memory for gpio port\n");
         return 1;
     }
 

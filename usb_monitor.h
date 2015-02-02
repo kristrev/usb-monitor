@@ -10,6 +10,7 @@ struct usb_port;
 #define DEFAULT_TIMEOUT_SEC 5
 #define ADDED_TIMEOUT_SEC 10
 #define USB_RETRANS_LIMIT 5
+#define PING_OUTPUT 20 //Only write ping sucess ~ever 100 sec
 
 //port function pointers
 typedef void (*print_port)(struct usb_port *port);
@@ -40,6 +41,7 @@ typedef void (*handle_timeout)(struct usb_port *port);
     uint8_t msg_mode; \
     uint8_t path_len; \
     uint8_t num_retrans; \
+    uint8_t ping_cnt; \
     uint8_t ping_buf[LIBUSB_CONTROL_SETUP_SIZE + 2]; \
     uint8_t path[8]; \
     LIST_ENTRY(usb_port) port_next; \
@@ -77,6 +79,7 @@ struct usb_monitor_ctx {
     LIST_HEAD(hubs, usb_hub) hub_list;
     LIST_HEAD(ports, usb_port) port_list;
     struct ports timeout_list;
+    FILE* logfile;
 };
 
 //Callback used when devices are added. Also, called from _lists whenever a hub

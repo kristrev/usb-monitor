@@ -4,8 +4,9 @@
 #include "usb_helpers.h"
 #include "usb_monitor.h"
 #include "usb_monitor_lists.h"
+#include "usb_logging.h"
 
-uint8_t usb_helpers_get_num_ports(libusb_device *hub_device)
+uint8_t usb_helpers_get_num_ports(struct usb_monitor_ctx *ctx, libusb_device *hub_device)
 {
     struct libusb_device_handle *hub_handle;
     struct hub_descriptor hubd;
@@ -14,7 +15,7 @@ uint8_t usb_helpers_get_num_ports(libusb_device *hub_device)
     memset(&hubd, 0, sizeof(hubd));
 
     if (libusb_open(hub_device, &hub_handle)) {
-        fprintf(stderr, "Could not create USB handle\n");
+        USB_DEBUG_PRINT(ctx->logfile, "Could not create USB handle\n");
         return 0;
     }
 
@@ -36,10 +37,10 @@ uint8_t usb_helpers_get_num_ports(libusb_device *hub_device)
     libusb_close(hub_handle);
 
     if (retval < 0)
-        fprintf(stderr, "Failed to read hub descriptor. Error: %s\n",
+        USB_DEBUG_PRINT(ctx->logfile, "Failed to read hub descriptor. Error: %s\n",
                 libusb_error_name(retval));
     else
-        printf("Number of ports: %u\n", hubd.bNbrPorts);
+        USB_DEBUG_PRINT(ctx->logfile, "Number of ports: %u\n", hubd.bNbrPorts);
 
     return hubd.bNbrPorts;
 }
@@ -59,7 +60,7 @@ void usb_helpers_reset_port(struct usb_port *port)
 
     if (port->status == PORT_DEV_CONNECTED) {
         libusb_get_device_descriptor(port->dev, &desc);
-        fprintf(stdout, "Device: %.4x:%.4x removed\n", desc.idVendor, desc.idProduct);
+        USB_DEBUG_PRINT(port->ctx->logfile, "Device: %.4x:%.4x removed\n", desc.idVendor, desc.idProduct);
 
         if (port->dev_handle)
             libusb_close(port->dev_handle);
@@ -76,7 +77,6 @@ void usb_helpers_reset_port(struct usb_port *port)
     if (port->msg_mode != RESET &&
         (port->timeout_next.le_next != NULL ||
         port->timeout_next.le_prev != NULL)) {
-        printf("Removed from timeout\n");
         usb_monitor_lists_del_timeout(port);
     }
 
@@ -99,7 +99,7 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
         return;
 
     if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
-        fprintf(stderr, "Ping failed for %.4x:%.4x\n", port->vid, port->pid);
+        USB_DEBUG_PRINT(port->ctx->logfile, "Ping failed for %.4x:%.4x\n", port->vid, port->pid);
         port->num_retrans++;
 
         if (port->num_retrans == USB_RETRANS_LIMIT) {
@@ -107,7 +107,10 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
             return;
         }
     } else {
-        fprintf(stderr, "Ping success for %.4x:%.4x\n", port->vid, port->pid);
+        if (++port->ping_cnt == PING_OUTPUT) {
+            USB_DEBUG_PRINT(port->ctx->logfile, "Ping success for %.4x:%.4x\n", port->vid, port->pid);
+            port->ping_cnt = 0;
+        }
         port->num_retrans = 0;
     }
 
@@ -125,7 +128,7 @@ static int32_t usb_helpers_configure_handle(struct usb_port *port)
     retval = libusb_open(port->dev, &(port->dev_handle));
 
     if (retval) {
-        fprintf(stderr, "Failed to open device, msg: %s, dev:\n", libusb_error_name(retval));
+        USB_DEBUG_PRINT(port->ctx->logfile, "Failed to open device, msg: %s, dev:\n", libusb_error_name(retval));
         port->output(port);
         //That we cant open device is an indication that something is wrong
         port->num_retrans++;
@@ -150,7 +153,7 @@ void usb_helpers_send_ping(struct usb_port *port)
     transfer = libusb_alloc_transfer(0);
 
     if (transfer == NULL) {
-        fprintf(stderr, "Could not allocate transfer for:\n");
+        USB_DEBUG_PRINT(port->ctx->logfile, "Could not allocate transfer for:\n");
         port->output(port);
         usb_helpers_start_timeout(port, DEFAULT_TIMEOUT_SEC);
         return;
@@ -175,7 +178,7 @@ void usb_helpers_send_ping(struct usb_port *port)
                                  5000);
 
     if (libusb_submit_transfer(transfer)) {
-        fprintf(stderr, "Failed to submit transfer\n");
+        USB_DEBUG_PRINT(port->ctx->logfile, "Failed to submit transfer\n");
         libusb_free_transfer(transfer);
         libusb_release_interface(port->dev_handle, 0);
         libusb_close(port->dev_handle);
@@ -196,7 +199,7 @@ void usb_helpers_check_devices(struct usb_monitor_ctx *ctx)
     cnt = libusb_get_device_list(NULL, &list);
 
     if (cnt < 0) {
-        fprintf(stderr, "Failed to get device list\n");
+        USB_DEBUG_PRINT(ctx->logfile, "Failed to get device list\n");
         //This function is also called from timeout, so if we ever fail to get
         //list, we will just try again later
         return;

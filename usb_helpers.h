@@ -25,7 +25,9 @@ struct hub_descriptor {
     uint8_t bHubContrCurrent;
 } __attribute__((packed));
 
-uint8_t usb_helpers_get_num_ports(libusb_device *hub_device);
+//Get the number of ports for one hub
+uint8_t usb_helpers_get_num_ports(struct usb_monitor_ctx *ctx, libusb_device *hub_device);
+
 //Generic function for starting a timer
 void usb_helpers_start_timeout(struct usb_port *port, uint8_t timeout_sec);
 

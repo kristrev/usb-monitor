@@ -11,6 +11,7 @@
 #include "usb_monitor_lists.h"
 #include "usb_helpers.h"
 #include "gpio_handler.h"
+#include "usb_logging.h"
 
 static void usb_monitor_print_ports(struct usb_monitor_ctx *ctx)
 {
@@ -19,7 +20,7 @@ static void usb_monitor_print_ports(struct usb_monitor_ctx *ctx)
     LIST_FOREACH(itr, &(ctx->port_list), port_next)
         itr->output(itr);
 
-    fprintf(stdout, "\n");
+    fprintf(ctx->logfile, "\n");
 }
 
 static void usb_monitor_reset_all_ports(struct usb_monitor_ctx *ctx)
@@ -66,7 +67,7 @@ void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     if (port->dev && port->dev == dev)
         return;
 
-    fprintf(stdout, "Device: %.4x:%.4x added\n", desc.idVendor, desc.idProduct);
+    USB_DEBUG_PRINT(ctx->logfile, "Device: %.4x:%.4x added\n", desc.idVendor, desc.idProduct);
 
     //We need to configure port. So far, this is all generic
     port->vid = desc.idVendor;
@@ -163,7 +164,22 @@ int main(int argc, char *argv[])
     ctx = malloc(sizeof(struct usb_monitor_ctx));
 
     if (ctx == NULL) {
-        fprintf(stderr, "Failed to allocated application context struct\n");
+        USB_DEBUG_PRINT(stderr, "Failed to allocated application context struct\n");
+        exit(EXIT_FAILURE);
+    }
+    
+    ctx->logfile = stderr;
+
+    while ((retval = getopt(argc, argv, "o:")) != -1) {
+        switch (retval) {
+        case 'o':
+            ctx->logfile = fopen(optarg, "w+");  
+            break;
+        } 
+    }
+
+    if (ctx->logfile == NULL) {
+        fprintf(stderr, "Failed to create logfile\n");
         exit(EXIT_FAILURE);
     }
 
@@ -173,7 +189,7 @@ int main(int argc, char *argv[])
 
     retval = libusb_init(NULL);
     if (retval) {
-        fprintf(stderr, "libusb failed with error %s\n",
+        USB_DEBUG_PRINT(ctx->logfile, "libusb failed with error %s\n",
                 libusb_error_name(retval));
         exit(EXIT_FAILURE);
     }
@@ -192,7 +208,7 @@ int main(int argc, char *argv[])
                                      usb_monitor_cb,
                                      ctx, NULL);
 
-    fprintf(stdout, "Initial state:\n");
+    USB_DEBUG_PRINT(ctx->logfile, "Initial state:\n");
     usb_monitor_print_ports(ctx);
 
     gettimeofday(&last_restart, NULL);

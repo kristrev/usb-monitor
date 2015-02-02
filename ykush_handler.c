@@ -9,6 +9,7 @@
 #include "ykush_handler.h"
 #include "usb_helpers.h"
 #include "usb_monitor_lists.h"
+#include "usb_logging.h"
 
 static void ykush_update_port(struct usb_port *port);
 
@@ -18,19 +19,19 @@ static void ykush_print_port(struct usb_port *port)
     int i;
     struct libusb_device_descriptor desc;
 
-    fprintf(stdout, "Type: YKUSH Path: ");
+    USB_DEBUG_PRINT(port->ctx->logfile, "Type: YKUSH Path: ");
 
     for (i = 0; i < port->path_len-1; i++)
-        fprintf(stdout, "%u-", port->path[i]);
+        fprintf(port->ctx->logfile, "%u-", port->path[i]);
 
-    fprintf(stdout, "%u State: %u Pwr: %u ", port->path[i], port->status, port->pwr_state);
+    fprintf(port->ctx->logfile, "%u State: %u Pwr: %u ", port->path[i], port->status, port->pwr_state);
 
     if (port->dev) {
         libusb_get_device_descriptor(port->dev, &desc);
-        fprintf(stdout, " Device: %.4x:%.4x", desc.idVendor, desc.idProduct);
+        fprintf(port->ctx->logfile, " Device: %.4x:%.4x", desc.idVendor, desc.idProduct);
     }
 
-    fprintf(stdout, "\n");
+    fprintf(port->ctx->logfile, "\n");
 }
 
 static void ykush_reset_cb(struct libusb_transfer *transfer)
@@ -38,7 +39,7 @@ static void ykush_reset_cb(struct libusb_transfer *transfer)
     struct ykush_port *yport = transfer->user_data;
 
     if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
-        fprintf(stderr, "Failed to flip %u (%.4x:%.4x)\n", yport->port_num, yport->vid, yport->pid);
+        USB_DEBUG_PRINT(yport->ctx->logfile, "Failed to flip %u (%.4x:%.4x)\n", yport->port_num, yport->vid, yport->pid);
         //Set to IDLE in case of transfer error, we will then retry up/down on
         //next timeout (or on user request)
         yport->msg_mode = IDLE;
@@ -52,7 +53,7 @@ static void ykush_reset_cb(struct libusb_transfer *transfer)
         //msg_state to PING again. Device is disconnected, so it will be
         //connected again and we will set flag there
         if (yport->pwr_state == POWER_ON) {
-            fprintf(stdout, "YKUSH port %u is switched on again\n", yport->port_num);
+            USB_DEBUG_PRINT(yport->ctx->logfile, "YKUSH port %u is switched on again\n", yport->port_num);
             yport->msg_mode = IDLE;
         } else {
             usb_helpers_start_timeout((struct usb_port*) yport, DEFAULT_TIMEOUT_SEC);
@@ -79,7 +80,7 @@ static void ykush_update_port(struct usb_port *port)
     //device.
     if (yport->timeout_next.le_next != NULL ||
         yport->timeout_next.le_prev != NULL) {
-            fprintf(stdout, "Will delete:\n");
+            USB_DEBUG_PRINT(yport->ctx->logfile, "Will delete:\n");
             ykush_print_port((struct usb_port*) yport);
             usb_monitor_lists_del_timeout((struct usb_port*) yport);
     }
@@ -95,7 +96,7 @@ static void ykush_update_port(struct usb_port *port)
         port_cmd = YKUSH_CMD_PORT_3;
         break;
     default:
-        fprintf(stderr, "Unknown port, aborting\n");
+        USB_DEBUG_PRINT(yport->ctx->logfile, "Unknown port, aborting\n");
         return;
     }
 
@@ -106,13 +107,13 @@ static void ykush_update_port(struct usb_port *port)
 
     //Here I need to set my expected modei, to start handling errors
 
-    fprintf(stdout, "Will send 0x%.2x to %u (%u) \n", port_cmd, yport->port_num, yport->pwr_state);
+    USB_DEBUG_PRINT(yport->ctx->logfile, "Will send 0x%.2x to %u (%u) \n", port_cmd, yport->port_num, yport->pwr_state);
 
     //Follow the steps of the libusb async manual
     transfer = libusb_alloc_transfer(0);
 
     if (transfer == NULL) {
-        fprintf(stderr, "Could not allocate trasnfer\n");
+        USB_DEBUG_PRINT(yport->ctx->logfile, "Could not allocate trasnfer\n");
         usb_helpers_start_timeout(port, DEFAULT_TIMEOUT_SEC);
         return;
     }
@@ -131,7 +132,7 @@ static void ykush_update_port(struct usb_port *port)
                                    5000);
 
     if (libusb_submit_transfer(transfer)) {
-        fprintf(stderr, "Failed to submit transfer\n");
+        USB_DEBUG_PRINT(yport->ctx->logfile, "Failed to submit transfer\n");
         libusb_free_transfer(transfer);
         usb_helpers_start_timeout(port, DEFAULT_TIMEOUT_SEC);
         return;
@@ -149,7 +150,7 @@ static void ykush_handle_timeout(struct usb_port *port)
 static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
                                    struct ykush_hub *yhub)
 {
-    uint8_t num_ports = usb_helpers_get_num_ports(yhub->hub_dev);
+    uint8_t num_ports = usb_helpers_get_num_ports(ctx, yhub->hub_dev);
     uint8_t i;
     uint8_t comm_path[8];
     int32_t num_port_numbers = 0, retval = 0;
@@ -161,35 +162,35 @@ static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
     num_ports -= 1;
 
     if (num_ports != MAX_YKUSH_PORTS) {
-        fprintf(stderr, "YKUSH hub with odd number of ports %u\n", num_ports);
+        USB_DEBUG_PRINT(ctx->logfile, "YKUSH hub with odd number of ports %u\n", num_ports);
         return 0;
     }
 
     //Set up com device
     retval = libusb_open(yhub->comm_dev, &(yhub->comm_handle));
     if (retval) {
-        fprintf(stdout, "Open failed: %s\n", libusb_error_name(retval));
+        USB_DEBUG_PRINT(ctx->logfile, "Open failed: %s\n", libusb_error_name(retval));
         return 0;
     }
 
     retval = libusb_detach_kernel_driver(yhub->comm_handle, 0);
     //This error is not critical, it just means that there was no driver
     if (retval && retval != LIBUSB_ERROR_NOT_FOUND) {
-        fprintf(stdout, "Detatch failed: %s\n", libusb_error_name(retval));
+        USB_DEBUG_PRINT(ctx->logfile, "Detatch failed: %s\n", libusb_error_name(retval));
         libusb_close(yhub->comm_handle);
         return 0;
     }
 
     retval = libusb_set_configuration(yhub->comm_handle, 1);
     if (retval) {
-        fprintf(stdout, "Config failed: %s\n", libusb_error_name(retval));
+        USB_DEBUG_PRINT(ctx->logfile, "Config failed: %s\n", libusb_error_name(retval));
         libusb_close(yhub->comm_handle);
         return 0;
     }
 
     retval = libusb_claim_interface(yhub->comm_handle, 0);
     if (retval) {
-        fprintf(stdout, "Claim failed: %s\n", libusb_error_name(retval));
+        USB_DEBUG_PRINT(ctx->logfile, "Claim failed: %s\n", libusb_error_name(retval));
         libusb_close(yhub->comm_handle);
         return 0;
     }
@@ -240,7 +241,7 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
 
     //TODO: Decide on error handling
     if (yhub == NULL) {
-        fprintf(stderr, "Failed to allocate memory for YKUSH hub\n");
+        USB_DEBUG_PRINT(usbmon_ctx->logfile, "Failed to allocate memory for YKUSH hub\n");
         return;
     }
 
@@ -249,7 +250,7 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
     libusb_ref_device(device);
     libusb_ref_device(parent);
 
-    printf("Added new YKUSH hub\n");
+    USB_DEBUG_PRINT(usbmon_ctx->logfile, "Added new YKUSH hub\n");
 
     yhub->hub_dev = parent;
     yhub->comm_dev = device;
@@ -274,11 +275,11 @@ static void ykush_del_device(libusb_context *ctx, libusb_device *device,
     uint8_t i;
 
     if (yhub == NULL) {
-        fprintf(stderr, "Hub not on list\n");
+        USB_DEBUG_PRINT(usbmon_ctx->logfile, "Hub not on list\n");
         return;
     }
 
-    fprintf(stderr, "Will remove YKUSH hub\n");
+    USB_DEBUG_PRINT(usbmon_ctx->logfile, "Will remove YKUSH hub\n");
 
     libusb_release_interface(yhub->comm_handle, 0);
     libusb_close(yhub->comm_handle);
