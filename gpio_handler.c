@@ -32,6 +32,7 @@ static void gpio_print_port(struct usb_port *port)
     }
 
     fprintf(port->ctx->logfile, "\n");
+    fflush(port->ctx->logfile);
 }
 
 static void gpio_update_port(struct usb_port *port)

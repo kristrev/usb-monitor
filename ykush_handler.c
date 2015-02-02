@@ -32,6 +32,7 @@ static void ykush_print_port(struct usb_port *port)
     }
 
     fprintf(port->ctx->logfile, "\n");
+    fflush(port->ctx->logfile);
 }
 
 static void ykush_reset_cb(struct libusb_transfer *transfer)

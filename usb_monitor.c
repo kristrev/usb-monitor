@@ -160,6 +160,7 @@ int main(int argc, char *argv[])
     struct timeval tv = {1,0};
     struct timeval last_restart, last_dev_check, cur_time;
     char path_1[] = "1-1", path_2[] = "2-1";
+    uint8_t daemonize = 0;
 
     ctx = malloc(sizeof(struct usb_monitor_ctx));
 
@@ -170,16 +171,24 @@ int main(int argc, char *argv[])
     
     ctx->logfile = stderr;
 
-    while ((retval = getopt(argc, argv, "o:")) != -1) {
+    while ((retval = getopt(argc, argv, "o:d")) != -1) {
         switch (retval) {
         case 'o':
             ctx->logfile = fopen(optarg, "w+");  
+            break;
+        case 'd':
+            daemonize = 1;
             break;
         } 
     }
 
     if (ctx->logfile == NULL) {
         fprintf(stderr, "Failed to create logfile\n");
+        exit(EXIT_FAILURE);
+    }
+
+    if (daemonize && daemon(1,1)) {
+        fprintf(stderr, "Failed to start usb-monitor as daemon\n");
         exit(EXIT_FAILURE);
     }
 
