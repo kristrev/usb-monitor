@@ -4,8 +4,9 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <string.h>
-#include <json-c/json.h>
+#include <signal.h>
 
+#include <json-c/json.h>
 #include <libusb-1.0/libusb.h>
 
 #include "usb_monitor.h"
@@ -14,6 +15,9 @@
 #include "usb_helpers.h"
 #include "gpio_handler.h"
 #include "usb_logging.h"
+
+//Kept global so that I can access it from the signal handler
+static struct usb_monitor_ctx *usbmon_ctx = NULL;
 
 static void usb_monitor_print_ports(struct usb_monitor_ctx *ctx)
 {
@@ -25,14 +29,15 @@ static void usb_monitor_print_ports(struct usb_monitor_ctx *ctx)
     fprintf(ctx->logfile, "\n");
 }
 
-static void usb_monitor_reset_all_ports(struct usb_monitor_ctx *ctx)
+static void usb_monitor_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t forced)
 {
     struct usb_port *itr;
 
     LIST_FOREACH(itr, &(ctx->port_list), port_next) {
         //Only restart which are not connected and are currently not being reset
-        if (itr->status == PORT_NO_DEV_CONNECTED &&
-            itr->msg_mode != RESET)
+        if (forced ||
+            (itr->status == PORT_NO_DEV_CONNECTED &&
+            itr->msg_mode != RESET))
             itr->update(itr);
     }
 }
@@ -274,28 +279,35 @@ static uint8_t usb_monitor_parse_config(struct usb_monitor_ctx *ctx,
     return retval;
 }
 
+static void usb_monitor_signal_handler(int signum)
+{
+    usb_monitor_reset_all_ports(usbmon_ctx, 1);
+}
+
 int main(int argc, char *argv[])
 {
-    struct usb_monitor_ctx *ctx = NULL;
     int retval = 0;
     struct timeval tv = {1,0};
     struct timeval last_restart, last_dev_check, cur_time;
     uint8_t daemonize = 0;
     char *conf_file_name = NULL;
+    struct sigaction sig_handler;
 
-    ctx = malloc(sizeof(struct usb_monitor_ctx));
+    memset(&sig_handler, 0, sizeof(sig_handler));
 
-    if (ctx == NULL) {
+    usbmon_ctx = malloc(sizeof(struct usb_monitor_ctx));
+
+    if (usbmon_ctx == NULL) {
         fprintf(stderr, "Failed to allocated application context struct\n");
         exit(EXIT_FAILURE);
     }
     
-    ctx->logfile = stderr;
+    usbmon_ctx->logfile = stderr;
 
     while ((retval = getopt(argc, argv, "o:c:d")) != -1) {
         switch (retval) {
         case 'o':
-            ctx->logfile = fopen(optarg, "w+");  
+            usbmon_ctx->logfile = fopen(optarg, "w+");  
             break;
         case 'c':
             conf_file_name = optarg;
@@ -306,19 +318,19 @@ int main(int argc, char *argv[])
         } 
     }
 
-    if (ctx->logfile == NULL) {
+    if (usbmon_ctx->logfile == NULL) {
         fprintf(stderr, "Failed to create logfile\n");
         exit(EXIT_FAILURE);
     }
 
-    LIST_INIT(&(ctx->hub_list));
-    LIST_INIT(&(ctx->port_list));
-    LIST_INIT(&(ctx->timeout_list));
+    LIST_INIT(&(usbmon_ctx->hub_list));
+    LIST_INIT(&(usbmon_ctx->port_list));
+    LIST_INIT(&(usbmon_ctx->timeout_list));
 
     if (conf_file_name != NULL &&
-        usb_monitor_parse_config(ctx, conf_file_name)) {
+        usb_monitor_parse_config(usbmon_ctx, conf_file_name)) {
         fprintf(stderr, "Failed to read config file\n");
-        fclose(ctx->logfile);
+        fclose(usbmon_ctx->logfile);
         exit(EXIT_FAILURE);
     }
     
@@ -326,13 +338,21 @@ int main(int argc, char *argv[])
     if (retval) {
         fprintf(stderr, "libusb failed with error %s\n",
                 libusb_error_name(retval));
-        fclose(ctx->logfile);
+        fclose(usbmon_ctx->logfile);
+        exit(EXIT_FAILURE);
+    }
+
+    //Start signal handler
+    sig_handler.sa_handler = usb_monitor_signal_handler;
+
+    if (sigaction(SIGUSR1, &sig_handler, NULL)) {
+        fprintf(stderr, "Could not intall signal handler\n");
         exit(EXIT_FAILURE);
     }
 
     if (daemonize && daemon(1,1)) {
         fprintf(stderr, "Failed to start usb-monitor as daemon\n");
-        fclose(ctx->logfile);
+        fclose(usbmon_ctx->logfile);
         libusb_exit(NULL);
         exit(EXIT_FAILURE);
     }
@@ -345,10 +365,10 @@ int main(int argc, char *argv[])
                                      LIBUSB_HOTPLUG_MATCH_ANY,
                                      LIBUSB_HOTPLUG_MATCH_ANY,
                                      usb_monitor_cb,
-                                     ctx, NULL);
+                                     usbmon_ctx, NULL);
 
-    USB_DEBUG_PRINT(ctx->logfile, "Initial state:\n");
-    usb_monitor_print_ports(ctx);
+    USB_DEBUG_PRINT(usbmon_ctx->logfile, "Initial state:\n");
+    usb_monitor_print_ports(usbmon_ctx);
 
     gettimeofday(&last_restart, NULL);
     gettimeofday(&last_dev_check, NULL);
@@ -357,17 +377,17 @@ int main(int argc, char *argv[])
         libusb_handle_events_timeout_completed(NULL, &tv, NULL);
         
         //Check if we have any pending timeouts
-        usb_monitor_check_timeouts(ctx);
+        usb_monitor_check_timeouts(usbmon_ctx);
 
         gettimeofday(&cur_time, NULL);
 
         //Do not run both checkes at the same time
         if (cur_time.tv_sec - last_dev_check.tv_sec > 30) {
             last_dev_check.tv_sec = cur_time.tv_sec;
-            usb_helpers_check_devices(ctx);
+            usb_helpers_check_devices(usbmon_ctx);
         } else if (cur_time.tv_sec - last_restart.tv_sec > 60) {
             last_restart.tv_sec = cur_time.tv_sec;
-            usb_monitor_reset_all_ports(ctx);
+            usb_monitor_reset_all_ports(usbmon_ctx, 0);
         }
     }
 
