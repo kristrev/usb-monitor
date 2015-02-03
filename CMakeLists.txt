@@ -12,3 +12,4 @@ add_executable(usb_monitor
                ykush_handler.c
                gpio_handler.c)
 target_link_libraries(usb_monitor ${LIBS})
+install(TARGETS usb_monitor RUNTIME DESTINATION bin)
