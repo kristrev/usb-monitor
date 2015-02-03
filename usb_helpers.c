@@ -213,3 +213,13 @@ void usb_helpers_check_devices(struct usb_monitor_ctx *ctx)
     libusb_free_device_list(list, 1);
 
 }
+
+void usb_helpers_fill_port_array(struct libusb_device *dev,
+                                 uint8_t *path,
+                                 uint8_t *path_len)
+{
+    path[0] = libusb_get_bus_number(dev);
+    *path_len = libusb_get_port_numbers(dev, path + 1, 7);
+    //We use the bus as part of path
+    *path_len += 1;
+}

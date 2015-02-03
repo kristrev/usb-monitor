@@ -32,22 +32,18 @@ void usb_monitor_lists_del_port(struct usb_port *port)
     port->port_next.le_prev = NULL;
 }
 
+//This one should only accept context + path + len
 struct usb_port *usb_monitor_lists_find_port_path(struct usb_monitor_ctx *ctx,
-                                                 libusb_device *dev)
+                                                  uint8_t *path,
+                                                  uint8_t path_len)
 {
-    uint8_t path[8];
-    int32_t num_port_numbers;
     struct usb_port *itr;
-
-    //Create path for device we want to look up
-    path[0] = libusb_get_bus_number(dev);
-    num_port_numbers = libusb_get_port_numbers(dev, path + 1, sizeof(path) - 1);
 
     LIST_FOREACH(itr, &(ctx->port_list), port_next) {
         //Need to compare both length and content to avoid matching subset of
         //paths
-        if ((itr->path_len != (num_port_numbers + 1)) || 
-            (memcmp(itr->path, path, num_port_numbers + 1)))
+        if ((itr->path_len != path_len) || 
+            (memcmp(itr->path, path, path_len)))
             continue;
 
         break;

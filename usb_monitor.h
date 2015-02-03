@@ -11,6 +11,7 @@ struct usb_port;
 #define ADDED_TIMEOUT_SEC 10
 #define USB_RETRANS_LIMIT 5
 #define PING_OUTPUT 20 //Only write ping sucess ~ever 100 sec
+#define USB_PATH_MAX 8 //len(path) + bus number
 
 //port function pointers
 typedef void (*print_port)(struct usb_port *port);
@@ -43,7 +44,7 @@ typedef void (*handle_timeout)(struct usb_port *port);
     uint8_t num_retrans; \
     uint8_t ping_cnt; \
     uint8_t ping_buf[LIBUSB_CONTROL_SETUP_SIZE + 2]; \
-    uint8_t path[8]; \
+    uint8_t path[USB_PATH_MAX]; \
     LIST_ENTRY(usb_port) port_next; \
     LIST_ENTRY(usb_port) timeout_next
 

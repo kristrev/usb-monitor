@@ -117,7 +117,7 @@ uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx, char *path,
     struct gpio_port *port;
 
     //Bus + port(s)
-    uint8_t dev_path[8];
+    uint8_t dev_path[USB_PATH_MAX];
     uint8_t path_len = 0;
     char *cur_val = NULL;
     uint8_t i;
@@ -135,16 +135,22 @@ uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx, char *path,
     }
 
     if (i == 8 && cur_val != NULL) {
-        printf("Incorrect path\n");
+        fprintf(stderr, "Path for GPIO device is too long\n");
         return 1;
     } else {
         path_len = i;
     }
 
+    //TODO: Check if port is already in list
+    if (usb_monitor_lists_find_port_path(ctx, dev_path, path_len)) {
+         fprintf(stderr, "GPIO port already found\n");
+         return 1;
+    }
+
     port = malloc(sizeof(struct gpio_port));
     
     if (port == NULL) {
-        USB_DEBUG_PRINT(ctx->logfile, "Could not allocate memory for gpio port\n");
+        fprintf(stderr, "Could not allocate memory for gpio port\n");
         return 1;
     }
 

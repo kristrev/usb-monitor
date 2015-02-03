@@ -45,6 +45,8 @@ void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     //Check if device is connected to a port we control
     struct usb_port *port;
     struct libusb_device_descriptor desc;
+    uint8_t path[USB_PATH_MAX];
+    uint8_t path_len;
 
     libusb_get_device_descriptor(dev, &desc);
 
@@ -59,7 +61,8 @@ void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
         return;
     }
     
-    port = usb_monitor_lists_find_port_path(ctx, dev);
+    usb_helpers_fill_port_array(dev, path, &path_len);
+    port = usb_monitor_lists_find_port_path(ctx, path, path_len);
 
     if (!port)
         return;
@@ -90,7 +93,12 @@ void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
 
 static void usb_device_removed(struct usb_monitor_ctx *ctx, libusb_device *dev)
 {
-    struct usb_port *port = usb_monitor_lists_find_port_path(ctx, dev);
+    uint8_t path[USB_PATH_MAX];
+    uint8_t path_len;
+    struct usb_port *port = NULL;
+
+    usb_helpers_fill_port_array(dev, path, &path_len);
+    port = usb_monitor_lists_find_port_path(ctx, path, path_len);
 
     if (!port)
         return;

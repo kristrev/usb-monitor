@@ -153,7 +153,7 @@ static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
 {
     uint8_t num_ports = usb_helpers_get_num_ports(ctx, yhub->hub_dev);
     uint8_t i;
-    uint8_t comm_path[8];
+    uint8_t comm_path[USB_PATH_MAX];
     int32_t num_port_numbers = 0, retval = 0;
 
     if (!num_ports)

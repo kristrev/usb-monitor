@@ -16,7 +16,8 @@ void usb_monitor_lists_del_hub(struct usb_hub *hub);
 void usb_monitor_lists_add_port(struct usb_monitor_ctx *ctx, struct usb_port *port);
 void usb_monitor_lists_del_port(struct usb_port *port);
 struct usb_port *usb_monitor_lists_find_port_path(struct usb_monitor_ctx *ctx,
-                                                  libusb_device *dev);
+                                                  uint8_t *path,
+                                                  uint8_t path_len);
 
 //Add or delete port from timeout list
 void usb_monitor_lists_add_timeout(struct usb_monitor_ctx *ctx, struct usb_port *port);

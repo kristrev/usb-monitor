@@ -40,4 +40,9 @@ void usb_helpers_send_ping(struct usb_port *port);
 //Iterate through devices and call add for each of them. Used in case hub config
 //fails, for example
 void usb_helpers_check_devices(struct usb_monitor_ctx *ctx);
+
+//Fills path with path from dev and sets path_len. Assumes path is large enough
+//to store the path
+void usb_helpers_fill_port_array(struct libusb_device *dev, uint8_t *path,
+                                 uint8_t *path_len);
 #endif
