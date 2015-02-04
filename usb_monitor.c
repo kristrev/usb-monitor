@@ -284,6 +284,7 @@ static uint8_t usb_monitor_parse_config(struct usb_monitor_ctx *ctx,
 
 static void usb_monitor_signal_handler(int signum)
 {
+    USB_DEBUG_PRINT(usbmon_ctx->logfile, "Signalled to restart all ports\n");
     usb_monitor_reset_all_ports(usbmon_ctx, 1);
 }
 

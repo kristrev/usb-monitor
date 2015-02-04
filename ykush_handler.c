@@ -54,7 +54,7 @@ static void ykush_reset_cb(struct libusb_transfer *transfer)
         //msg_state to PING again. Device is disconnected, so it will be
         //connected again and we will set flag there
         if (yport->pwr_state == POWER_ON) {
-            USB_DEBUG_PRINT(yport->ctx->logfile, "YKUSH port %u is switched on again\n", yport->port_num);
+            //USB_DEBUG_PRINT(yport->ctx->logfile, "YKUSH port %u is switched on again\n", yport->port_num);
             yport->msg_mode = IDLE;
         } else {
             usb_helpers_start_timeout((struct usb_port*) yport, DEFAULT_TIMEOUT_SEC);
@@ -81,7 +81,7 @@ static void ykush_update_port(struct usb_port *port)
     //device.
     if (yport->timeout_next.le_next != NULL ||
         yport->timeout_next.le_prev != NULL) {
-            USB_DEBUG_PRINT(yport->ctx->logfile, "Will delete:\n");
+            //USB_DEBUG_PRINT(yport->ctx->logfile, "Will delete:\n");
             ykush_print_port((struct usb_port*) yport);
             usb_monitor_lists_del_timeout((struct usb_port*) yport);
     }
@@ -108,7 +108,7 @@ static void ykush_update_port(struct usb_port *port)
 
     //Here I need to set my expected modei, to start handling errors
 
-    USB_DEBUG_PRINT(yport->ctx->logfile, "Will send 0x%.2x to %u (%u) \n", port_cmd, yport->port_num, yport->pwr_state);
+    //USB_DEBUG_PRINT(yport->ctx->logfile, "Will send 0x%.2x to %u (%u) \n", port_cmd, yport->port_num, yport->pwr_state);
 
     //Follow the steps of the libusb async manual
     transfer = libusb_alloc_transfer(0);

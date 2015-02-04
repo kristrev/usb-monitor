@@ -53,7 +53,7 @@ static void gpio_update_port(struct usb_port *port)
     //timeout (there is no USB timer), we create infinite loop and that is that
     if (gport->timeout_next.le_next != NULL ||
         gport->timeout_next.le_prev != NULL) {
-            USB_DEBUG_PRINT(port->ctx->logfile, "Will delete:\n");
+            //USB_DEBUG_PRINT(port->ctx->logfile, "Will delete:\n");
             gpio_print_port((struct usb_port*) gport);
             usb_monitor_lists_del_timeout((struct usb_port*) gport);
     }
@@ -65,7 +65,7 @@ static void gpio_update_port(struct usb_port *port)
     //Do a write, if write is successful then we update power state
     snprintf(file_path, sizeof(file_path), "/sys/class/gpio/gpio%u/value", gport->gpio_num);
 
-    USB_DEBUG_PRINT(port->ctx->logfile, "Will write %u to %s\n", gpio_val, file_path);
+    //USB_DEBUG_PRINT(port->ctx->logfile, "Will write %u to %s\n", gpio_val, file_path);
     
     fd = open(file_path, O_WRONLY | FD_CLOEXEC);
 
@@ -86,7 +86,7 @@ static void gpio_update_port(struct usb_port *port)
         gport->pwr_state = !gport->pwr_state;
 
         if (gport->pwr_state) {
-            USB_DEBUG_PRINT(port->ctx->logfile, "GPIO %u switched on again\n", gport->gpio_num);
+            //USB_DEBUG_PRINT(port->ctx->logfile, "GPIO %u switched on again\n", gport->gpio_num);
             gport->msg_mode = IDLE;
             return;
         }
