@@ -288,6 +288,15 @@ static void usb_monitor_signal_handler(int signum)
     usb_monitor_reset_all_ports(usbmon_ctx, 1);
 }
 
+static void usb_monitor_print_usage()
+{
+    fprintf(stdout, "usb monitor command line arguments:\n");
+    fprintf(stdout, "\t-o : path to log file (optional)\n");
+    fprintf(stdout, "\t-c : path to config file (optional)\n");
+    fprintf(stdout, "\t-d : run as daemon\n");
+    fprintf(stdout, "\t-h : this output\n");
+}
+
 int main(int argc, char *argv[])
 {
     int retval = 0;
@@ -317,7 +326,7 @@ int main(int argc, char *argv[])
     
     usbmon_ctx->logfile = stderr;
 
-    while ((retval = getopt(argc, argv, "o:c:d")) != -1) {
+    while ((retval = getopt(argc, argv, "o:c:dh")) != -1) {
         switch (retval) {
         case 'o':
             usbmon_ctx->logfile = fopen(optarg, "w+");  
@@ -328,6 +337,10 @@ int main(int argc, char *argv[])
         case 'd':
             daemonize = 1;
             break;
+        case 'h':
+        default:
+            usb_monitor_print_usage();
+            exit(EXIT_SUCCESS);
         } 
     }
 
