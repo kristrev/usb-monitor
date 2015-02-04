@@ -5,6 +5,9 @@
 #include <sys/time.h>
 #include <string.h>
 #include <signal.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include <json-c/json.h>
 #include <libusb-1.0/libusb.h>
@@ -292,6 +295,15 @@ int main(int argc, char *argv[])
     uint8_t daemonize = 0;
     char *conf_file_name = NULL;
     struct sigaction sig_handler;
+    int32_t pid_fd;
+
+    //We should only allow one running instance of usb_monitor
+    pid_fd = open("/var/run/usb_monitor.pid", O_CREAT | O_RDWR | O_CLOEXEC, 0644);
+
+    if (pid_fd == -1 ||
+        lockf(pid_fd, F_TLOCK, 0)) {
+        exit(EXIT_FAILURE);
+    }
 
     memset(&sig_handler, 0, sizeof(sig_handler));
 
