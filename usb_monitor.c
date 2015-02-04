@@ -125,24 +125,20 @@ static int usb_monitor_cb(libusb_context *ctx, libusb_device *device,
 
     libusb_get_device_descriptor(device, &desc);
 
+    //Check if device belongs to a port we manage first. This is required for
+    //example for cascading hubs, we need to the hub from the port is is
+    //connected to, in addition to the port
+    if (event == LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED)
+        usb_device_added(usbmon_ctx, device);
+    else
+        usb_device_removed(usbmon_ctx, device);
+
     //Multiple callbacks can be called multiple times, so it makes little sense
     //to register a separate ykush callback, when we anyway have to filter here
     if (desc.idVendor == YKUSH_VID && desc.idProduct == YKUSH_PID) {
         ykush_event_cb(ctx, device, event, user_data);
         return 0;
     }
-
-    //So far, we assume that all hubs will have separate callbacks, so ignore
-    //those
-    //TODO: Add support for hubs in hubs?
-    if (desc.bDeviceClass == LIBUSB_CLASS_HUB)
-        return 0;
-
-    if (event == LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED)
-        usb_device_added(usbmon_ctx, device);
-    else
-        usb_device_removed(usbmon_ctx, device);
-
 
     return 0;
 }

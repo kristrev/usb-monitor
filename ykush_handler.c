@@ -82,7 +82,7 @@ static void ykush_update_port(struct usb_port *port)
     if (yport->timeout_next.le_next != NULL ||
         yport->timeout_next.le_prev != NULL) {
             //USB_DEBUG_PRINT(yport->ctx->logfile, "Will delete:\n");
-            ykush_print_port((struct usb_port*) yport);
+            //ykush_print_port((struct usb_port*) yport);
             usb_monitor_lists_del_timeout((struct usb_port*) yport);
     }
 

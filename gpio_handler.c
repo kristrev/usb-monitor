@@ -54,7 +54,7 @@ static void gpio_update_port(struct usb_port *port)
     if (gport->timeout_next.le_next != NULL ||
         gport->timeout_next.le_prev != NULL) {
             //USB_DEBUG_PRINT(port->ctx->logfile, "Will delete:\n");
-            gpio_print_port((struct usb_port*) gport);
+            //gpio_print_port((struct usb_port*) gport);
             usb_monitor_lists_del_timeout((struct usb_port*) gport);
     }
 
