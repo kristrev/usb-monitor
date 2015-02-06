@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <sys/epoll.h>
 
 #include <json-c/json.h>
 #include <libusb-1.0/libusb.h>
@@ -19,6 +20,7 @@
 #include "usb_helpers.h"
 #include "gpio_handler.h"
 #include "usb_logging.h"
+#include "backend_event_loop.h"
 
 //Kept global so that I can access it from the signal handler
 static struct usb_monitor_ctx *usbmon_ctx = NULL;
@@ -285,6 +287,88 @@ static void usb_monitor_signal_handler(int signum)
     usb_monitor_reset_all_ports(usbmon_ctx, 1);
 }
 
+//For events on USB socket
+static void usb_monitor_usb_event_cb(void *ptr, int32_t fd, uint32_t events)
+{
+    struct timeval tv = {0 ,0};
+    libusb_handle_events_timeout_completed(NULL, &tv, NULL);
+}
+
+static void usb_monitor_check_devices_cb(void *ptr)
+{
+    struct usb_monitor_ctx *ctx = ptr;
+    usb_helpers_check_devices(ctx);
+}
+
+static void usb_monitor_check_reset_cb(void *ptr)
+{
+    struct usb_monitor_ctx *ctx = ptr;
+    usb_monitor_reset_all_ports(ctx, 0);
+}
+
+//This function is called for every iteration + every second. Latter is needed
+//in case of restart
+static void usb_monitor_itr_cb(void *ptr)
+{
+    struct usb_monitor_ctx *ctx = ptr;
+    struct timeval tv = {0 ,0};
+
+    //First, check for any of libusb's timers. We are incontrol of timer, so no
+    //need for this function to block
+    libusb_handle_events_timeout_completed(NULL, &tv, NULL);
+
+    //Check if we have any pending timeouts
+    //TODO: Consider using the event loop timer queue for this
+    usb_monitor_check_timeouts(ctx);
+}
+
+static void usb_monitor_libusb_fd_add(int fd, short events, void *data)
+{
+    struct usb_monitor_ctx *ctx = data;
+
+    backend_event_loop_update(ctx->event_loop,
+                              events,
+                              EPOLL_CTL_ADD,
+                              fd,
+                              ctx->libusb_handle);
+}
+
+static void usb_monitor_libusb_fd_remove(int fd, void *data)
+{
+    //Closing a file descriptor causes it to be removed from epoll-set
+    close(fd);
+}
+
+static void usb_monitor_start_event_loop(struct usb_monitor_ctx *ctx)
+{
+    struct timeval tv;
+    uint64_t cur_time;
+
+    gettimeofday(&tv, NULL);
+
+    cur_time = (tv.tv_sec * 1e3) + (tv.tv_usec / 1e3);
+
+    //These timeout pointers will live for as long as the application.
+    //Therefore, there is no need to save them anywhere
+    if (!backend_event_loop_add_timeout(ctx->event_loop, cur_time + 1000,
+                                        usb_monitor_itr_cb, ctx, 1000))
+        return;
+   
+    //Do not make this one a multiple of reset_cb timeout. There is no need
+    //resetting and checking at the same time
+    if (!backend_event_loop_add_timeout(ctx->event_loop, cur_time + 25000,
+                                        usb_monitor_check_devices_cb,
+                                        ctx, 25000))
+        return;
+
+    if (!backend_event_loop_add_timeout(ctx->event_loop, cur_time + 60000,
+                                        usb_monitor_check_reset_cb,
+                                        ctx, 60000))
+        return;
+
+    backend_event_loop_run(ctx->event_loop);
+}
+
 static void usb_monitor_print_usage()
 {
     fprintf(stdout, "usb monitor command line arguments:\n");
@@ -294,15 +378,16 @@ static void usb_monitor_print_usage()
     fprintf(stdout, "\t-h : this output\n");
 }
 
+//TODO: Refactor this function, it is too big now
 int main(int argc, char *argv[])
 {
-    int retval = 0;
-    struct timeval tv = {1,0};
-    struct timeval last_restart, last_dev_check, cur_time;
+    int retval = 0, i = 0;
     uint8_t daemonize = 0;
     char *conf_file_name = NULL;
     struct sigaction sig_handler;
     int32_t pid_fd;
+    const struct libusb_pollfd **libusb_fds;
+    const struct libusb_pollfd *libusb_fd;
 
     //We should only allow one running instance of usb_monitor
     pid_fd = open("/var/run/usb_monitor.pid", O_CREAT | O_RDWR | O_CLOEXEC, 0644);
@@ -346,6 +431,17 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    usbmon_ctx->event_loop = backend_event_loop_create(); 
+
+    if (usbmon_ctx->event_loop == NULL) {
+        fprintf(stderr, "Failed to create event loop\n");
+        fclose(usbmon_ctx->logfile);
+        exit(EXIT_FAILURE);
+    }
+
+    usbmon_ctx->event_loop->itr_cb = NULL;
+    usbmon_ctx->event_loop->itr_data = NULL;
+
     LIST_INIT(&(usbmon_ctx->hub_list));
     LIST_INIT(&(usbmon_ctx->port_list));
     LIST_INIT(&(usbmon_ctx->timeout_list));
@@ -364,6 +460,44 @@ int main(int argc, char *argv[])
         fclose(usbmon_ctx->logfile);
         exit(EXIT_FAILURE);
     }
+
+    libusb_fds = libusb_get_pollfds(NULL);
+    if (libusb_fds == NULL) {
+        fprintf(stderr, "Failed to get list of libusb fds to poll\n");
+        fclose(usbmon_ctx->logfile);
+        exit(EXIT_FAILURE);
+    }
+
+    usbmon_ctx->libusb_handle = 
+        backend_create_epoll_handle(usbmon_ctx, 0, usb_monitor_usb_event_cb, 1);
+
+    if (usbmon_ctx->libusb_handle == NULL) {
+        fprintf(stderr, "Failed to create epoll handle\n");
+        fclose(usbmon_ctx->logfile);
+        exit(EXIT_FAILURE);
+    }
+
+
+    libusb_fd = libusb_fds[i];
+   
+    //Use one handler for all file descriptors. We know that there will always
+    //be at least one (USB) file descriptor we want to listen to (or one will
+    //come)
+    while (libusb_fd != NULL) {
+        backend_event_loop_update(usbmon_ctx->event_loop,
+                                  libusb_fd->events,
+                                  EPOLL_CTL_ADD,
+                                  libusb_fd->fd,
+                                  usbmon_ctx->libusb_handle);
+        libusb_fd = libusb_fds[++i];
+    }
+
+    free(libusb_fds);
+
+    libusb_set_pollfd_notifiers(NULL,
+                                usb_monitor_libusb_fd_add,
+                                usb_monitor_libusb_fd_remove,
+                                usbmon_ctx);
 
     //Start signal handler
     sig_handler.sa_handler = usb_monitor_signal_handler;
@@ -393,27 +527,10 @@ int main(int argc, char *argv[])
     USB_DEBUG_PRINT(usbmon_ctx->logfile, "Initial state:\n");
     usb_monitor_print_ports(usbmon_ctx);
 
-    gettimeofday(&last_restart, NULL);
-    gettimeofday(&last_dev_check, NULL);
-    //For now, just use the libusb wait-function as a basic event loop
-    while (1) {
-        libusb_handle_events_timeout_completed(NULL, &tv, NULL);
-        
-        //Check if we have any pending timeouts
-        usb_monitor_check_timeouts(usbmon_ctx);
-
-        gettimeofday(&cur_time, NULL);
-
-        //Do not run both checkes at the same time
-        if (cur_time.tv_sec - last_dev_check.tv_sec > 30) {
-            last_dev_check.tv_sec = cur_time.tv_sec;
-            usb_helpers_check_devices(usbmon_ctx);
-        } else if (cur_time.tv_sec - last_restart.tv_sec > 60) {
-            last_restart.tv_sec = cur_time.tv_sec;
-            usb_monitor_reset_all_ports(usbmon_ctx, 0);
-        }
-    }
+    usb_monitor_start_event_loop(usbmon_ctx);
 
     libusb_exit(NULL);
-    exit(EXIT_SUCCESS);
+
+    //We shall never stop
+    exit(EXIT_FAILURE);
 }

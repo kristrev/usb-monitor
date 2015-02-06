@@ -6,6 +6,8 @@
 #include <libusb-1.0/libusb.h>
 
 struct usb_port;
+struct backend_event_loop;
+struct backend_epoll_handle;
 
 #define DEFAULT_TIMEOUT_SEC 5
 #define ADDED_TIMEOUT_SEC 10
@@ -77,10 +79,14 @@ struct usb_port {
 };
 
 struct usb_monitor_ctx {
+    struct backend_event_loop *event_loop;
+    struct backend_epoll_handle *libusb_handle;
+    struct timeval last_restart;
+    struct timeval last_dev_check;
+    FILE* logfile;
     LIST_HEAD(hubs, usb_hub) hub_list;
     LIST_HEAD(ports, usb_port) port_list;
     struct ports timeout_list;
-    FILE* logfile;
 };
 
 //Callback used when devices are added. Also, called from _lists whenever a hub
