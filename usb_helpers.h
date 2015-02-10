@@ -7,26 +7,23 @@
 struct usb_port;
 struct usb_monitor_ctx;
 
+//Use struct from uapi/usb/ch9.h instead
 struct hub_descriptor {
     uint8_t bDescLength; // descriptor length
     uint8_t bDescriptorType; // descriptor type
     uint8_t bNbrPorts; // number of ports a hub equiped with
-
-    struct {
-        uint16_t LogPwrSwitchMode : 2;
-        uint16_t CompoundDevice : 1;
-        uint16_t OverCurrentProtectMode : 2;
-        uint16_t TTThinkTime : 2;
-        uint16_t PortIndicatorsSupported : 1;
-        uint16_t Reserved : 8;
-    } __attribute__((packed));
-
+    uint16_t wHubCharacteristics;
     uint8_t bPwrOn2PwrGood;
     uint8_t bHubContrCurrent;
 } __attribute__((packed));
 
+//Get the per-port power switching value
+int8_t usb_helpers_get_power_switch(struct usb_monitor_ctx *ctx,
+                                    libusb_device *hub_device, uint16_t usb_ver);
+
 //Get the number of ports for one hub
-uint8_t usb_helpers_get_num_ports(struct usb_monitor_ctx *ctx, libusb_device *hub_device);
+uint8_t usb_helpers_get_num_ports(struct usb_monitor_ctx *ctx,
+                                  libusb_device *hub_device, uint16_t usb_ver);
 
 //Generic function for starting a timer
 void usb_helpers_start_timeout(struct usb_port *port, uint8_t timeout_sec);

@@ -32,7 +32,6 @@ struct ykush_hub {
     //a different number of ports.
     //TODO: Consider using pointers, to reduce size of struct
     struct ykush_port port[MAX_YKUSH_PORTS];
-    uint8_t num_ports;
 };
 
 //This callback is used to handle YKUSH hubs being added and removed.

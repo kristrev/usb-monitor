@@ -19,6 +19,7 @@
 #include "usb_monitor_lists.h"
 #include "usb_helpers.h"
 #include "gpio_handler.h"
+#include "generic_handler.h"
 #include "usb_logging.h"
 #include "backend_event_loop.h"
 
@@ -98,8 +99,7 @@ void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     //Whenever we detect a device, we need to add to timeout to send ping.
     //However, we need to wait longer than the initial five seconds to let
     //usb_modeswitch potentially works its magic
-    //TODO: Do not use magic value
-    usb_helpers_start_timeout(port, DEFAULT_TIMEOUT_SEC);
+    usb_helpers_start_timeout(port, ADDED_TIMEOUT_SEC);
 }
 
 static void usb_device_removed(struct usb_monitor_ctx *ctx, libusb_device *dev)
@@ -139,7 +139,9 @@ static int usb_monitor_cb(libusb_context *ctx, libusb_device *device,
     //to register a separate ykush callback, when we anyway have to filter here
     if (desc.idVendor == YKUSH_VID && desc.idProduct == YKUSH_PID) {
         ykush_event_cb(ctx, device, event, user_data);
-        return 0;
+    } else if (desc.bDeviceClass == LIBUSB_CLASS_HUB) {
+        generic_event_cb(ctx, device, event, user_data);
+        usb_monitor_print_ports(usbmon_ctx);
     }
 
     return 0;
@@ -312,6 +314,7 @@ static void usb_monitor_itr_cb(void *ptr)
 {
     struct usb_monitor_ctx *ctx = ptr;
     struct timeval tv = {0 ,0};
+
 
     //First, check for any of libusb's timers. We are incontrol of timer, so no
     //need for this function to block

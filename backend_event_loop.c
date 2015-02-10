@@ -176,6 +176,7 @@ void backend_event_loop_run(struct backend_event_loop *del)
 
 		nfds = epoll_wait(del->efd, events, MAX_EPOLL_EVENTS, sleep_time);
 
+
 		if (nfds < 0)
 			continue;
 
@@ -184,7 +185,7 @@ void backend_event_loop_run(struct backend_event_loop *del)
         //example free a device in the internal libusb_list. So a USB event will
         //always work as intended, only difference is that event might be
         //removed from list, but our code should handle that
-        
+
         //No callbacks have been called between last timeout check and here, so
         //I can recycle timeout value
         if (timeout != NULL)

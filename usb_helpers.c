@@ -6,11 +6,14 @@
 #include "usb_monitor_lists.h"
 #include "usb_logging.h"
 
-uint8_t usb_helpers_get_num_ports(struct usb_monitor_ctx *ctx, libusb_device *hub_device)
+int8_t usb_helpers_get_power_switch(struct usb_monitor_ctx *ctx,
+                                    libusb_device *hub_device, uint16_t usb_ver)
 {
     struct libusb_device_handle *hub_handle;
     struct hub_descriptor hubd;
     int retval;
+    uint8_t val = (usb_ver == 0x300 ? LIBUSB_DT_SUPERSPEED_HUB : LIBUSB_DT_HUB);
+    uint16_t wHubChar = 0;
 
     memset(&hubd, 0, sizeof(hubd));
 
@@ -29,7 +32,7 @@ uint8_t usb_helpers_get_num_ports(struct usb_monitor_ctx *ctx, libusb_device *hu
                                      LIBUSB_REQUEST_TYPE_CLASS |
                                      LIBUSB_RECIPIENT_DEVICE,
                                      LIBUSB_REQUEST_GET_DESCRIPTOR,
-                                     LIBUSB_DT_HUB << 8,
+                                     val << 8,
                                      0,
                                      (unsigned char*) &hubd,
                                      (uint16_t) sizeof(hubd),
@@ -37,12 +40,52 @@ uint8_t usb_helpers_get_num_ports(struct usb_monitor_ctx *ctx, libusb_device *hu
     libusb_close(hub_handle);
 
     if (retval < 0)
+        return -1;
+
+    wHubChar = le16toh(hubd.wHubCharacteristics);
+    //Two lsb contains the port power control support
+    return wHubChar & 0x03;
+}
+
+uint8_t usb_helpers_get_num_ports(struct usb_monitor_ctx *ctx,
+                                  libusb_device *hub_device, uint16_t usb_ver)
+{
+    struct libusb_device_handle *hub_handle;
+    struct hub_descriptor hubd;
+    int retval;
+    uint8_t val = (usb_ver == 0x300 ? LIBUSB_DT_SUPERSPEED_HUB : LIBUSB_DT_HUB);
+
+    memset(&hubd, 0, sizeof(hubd));
+
+    if (libusb_open(hub_device, &hub_handle)) {
+        USB_DEBUG_PRINT(ctx->logfile, "Could not create USB handle\n");
+        return 0;
+    }
+
+    //This is copied from lsusb. libusb get_descriptor helper does not set
+    //class, which is required.
+    //TODO: This call is currently sync, consider making async if I see any
+    //performance problems. However, all devices I have tested with return
+    //immediatly, so this should not be a problem
+    retval = libusb_control_transfer(hub_handle,
+                                     LIBUSB_ENDPOINT_IN |
+                                     LIBUSB_REQUEST_TYPE_CLASS |
+                                     LIBUSB_RECIPIENT_DEVICE,
+                                     LIBUSB_REQUEST_GET_DESCRIPTOR,
+                                     val << 8,
+                                     0,
+                                     (unsigned char*) &hubd,
+                                     (uint16_t) sizeof(hubd),
+                                     5000);
+    libusb_close(hub_handle);
+
+    if (retval < 0) {
         USB_DEBUG_PRINT(ctx->logfile, "Failed to read hub descriptor. Error: %s\n",
                 libusb_error_name(retval));
-    else
-        USB_DEBUG_PRINT(ctx->logfile, "Number of ports: %u\n", hubd.bNbrPorts);
-
-    return hubd.bNbrPorts;
+        return 0;
+    } else {
+        return hubd.bNbrPorts;
+    }
 }
 
 void usb_helpers_start_timeout(struct usb_port *port, uint8_t timeout_sec)

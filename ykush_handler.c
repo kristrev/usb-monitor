@@ -151,7 +151,8 @@ static void ykush_handle_timeout(struct usb_port *port)
 static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
                                    struct ykush_hub *yhub)
 {
-    uint8_t num_ports = usb_helpers_get_num_ports(ctx, yhub->hub_dev);
+    //TODO: When YKUSH makes a USB 3.0-hub, update this
+    uint8_t num_ports = usb_helpers_get_num_ports(ctx, yhub->hub_dev, 0x200);
     uint8_t i;
     uint8_t comm_path[USB_PATH_MAX];
     int32_t num_port_numbers = 0, retval = 0;
@@ -251,7 +252,6 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
     libusb_ref_device(device);
     libusb_ref_device(parent);
 
-    USB_DEBUG_PRINT(usbmon_ctx->logfile, "Added new YKUSH hub\n");
 
     yhub->hub_dev = parent;
     yhub->comm_dev = device;
@@ -264,6 +264,8 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
     } else {
         usb_monitor_lists_add_hub(usbmon_ctx, (struct usb_hub*) yhub);
     }
+
+    USB_DEBUG_PRINT(usbmon_ctx->logfile, "Added new YKUSH hub. Num. ports %u\n", yhub->num_ports);
 }
 
 static void ykush_del_device(libusb_context *ctx, libusb_device *device,

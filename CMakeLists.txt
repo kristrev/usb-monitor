@@ -9,6 +9,7 @@ add_executable(usb_monitor
                usb_helpers.c
                usb_monitor.c
                usb_monitor_lists.c
+               generic_handler.c
                ykush_handler.c
                gpio_handler.c
                backend_event_loop.c)

@@ -1,6 +1,7 @@
 #ifndef USB_MONITOR_H
 #define USB_MONITOR_H
 
+#include <stdio.h>
 #include <stdint.h>
 #include <sys/queue.h>
 #include <libusb-1.0/libusb.h>
@@ -24,7 +25,8 @@ typedef void (*handle_timeout)(struct usb_port *port);
 //new hubs are added
 #define USB_HUB_MANDATORY \
     libusb_device *hub_dev; \
-    LIST_ENTRY(usb_hub) hub_next
+    LIST_ENTRY(usb_hub) hub_next; \
+    uint8_t num_ports
 
 //Size of path is 8 since it is bus + max depth (7)
 //parent might be NULL
