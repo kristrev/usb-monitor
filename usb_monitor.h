@@ -47,6 +47,7 @@ typedef void (*handle_timeout)(struct usb_port *port);
     uint8_t path_len; \
     uint8_t num_retrans; \
     uint8_t ping_cnt; \
+    uint8_t port_num; \
     uint8_t ping_buf[LIBUSB_CONTROL_SETUP_SIZE + 2]; \
     uint8_t path[USB_PATH_MAX]; \
     LIST_ENTRY(usb_port) port_next; \
@@ -91,7 +92,8 @@ struct usb_monitor_ctx {
     struct ports timeout_list;
 };
 
-//Callback used when devices are added. Also, called from _lists whenever a hub
-//is added, since we need to check if already seen devices belong to hub
-void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev);
+//We fake a callback in the device iteration function
+int usb_monitor_cb(libusb_context *ctx, libusb_device *device,
+                          libusb_hotplug_event event, void *user_data);
+
 #endif

@@ -17,6 +17,15 @@ struct hub_descriptor {
     uint8_t bHubContrCurrent;
 } __attribute__((packed));
 
+//Configure the generic components of a port
+void usb_helpers_configure_port(struct usb_port *port,
+                                struct usb_monitor_ctx *ctx,
+                                uint8_t *path, uint8_t path_len,
+                                uint8_t port_num);
+
+//Generic output function for a usb port
+void usb_helpers_print_port(struct usb_port *port, const char *type);
+
 //Get the per-port power switching value
 int8_t usb_helpers_get_power_switch(struct usb_monitor_ctx *ctx,
                                     libusb_device *hub_device, uint16_t usb_ver);

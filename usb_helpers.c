@@ -6,6 +6,49 @@
 #include "usb_monitor_lists.h"
 #include "usb_logging.h"
 
+void usb_helpers_configure_port(struct usb_port *port,
+                                struct usb_monitor_ctx *ctx,
+                                uint8_t *path, uint8_t path_len,
+                                uint8_t port_num)
+{
+        memcpy(port->path, path, path_len);
+        port->path_len = path_len;
+        port->port_num = port_num;
+        port->pwr_state = POWER_ON;
+        port->ctx = ctx;
+
+        usb_monitor_lists_add_port(ctx, port);
+}
+
+void usb_helpers_print_port(struct usb_port *port, const char *type)
+{
+    int i;
+    struct libusb_device_descriptor desc;
+
+    //Generic hubs often advertise a much larger number of ports than they
+    //provide. In order to avoid polluting the lists, only print ports that has
+    //a device connected
+    if (port->status != PORT_DEV_CONNECTED)
+        return;
+
+    USB_DEBUG_PRINT(port->ctx->logfile, "Type: %s Path: ", type);
+
+    for (i = 0; i < port->path_len-1; i++)
+        fprintf(port->ctx->logfile, "%u-", port->path[i]);
+
+    fprintf(port->ctx->logfile, "%u State: %u Pwr: %u ", port->path[i],
+            port->status, port->pwr_state);
+
+    if (port->dev) {
+        libusb_get_device_descriptor(port->dev, &desc);
+        fprintf(port->ctx->logfile, " Device: %.4x:%.4x", desc.idVendor,
+                desc.idProduct);
+    }
+
+    fprintf(port->ctx->logfile, "\n");
+    fflush(port->ctx->logfile);
+}
+
 int8_t usb_helpers_get_power_switch(struct usb_monitor_ctx *ctx,
                                     libusb_device *hub_device, uint16_t usb_ver)
 {
@@ -250,7 +293,7 @@ void usb_helpers_check_devices(struct usb_monitor_ctx *ctx)
 
     for (i = 0; i<cnt; i++) {
         dev = list[i];
-        usb_device_added(ctx, dev);
+        usb_monitor_cb(NULL, dev, LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED, ctx);
     }
 
     libusb_free_device_list(list, 1);

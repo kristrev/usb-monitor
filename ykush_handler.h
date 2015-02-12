@@ -17,9 +17,6 @@
 
 struct ykush_port {
     USB_PORT_MANDATORY;
-    //This is the current port number. Added for convenience, so that I dont
-    //have to read from path all the time
-    uint8_t port_num;
     //When doing async transfer, buffer needs to be allocated on heap
     uint8_t buf[6];
 };

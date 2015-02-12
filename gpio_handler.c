@@ -15,25 +15,7 @@
 
 static void gpio_print_port(struct usb_port *port)
 {
-    int i;
-    struct libusb_device_descriptor desc;
-    struct gpio_port *gport = (struct gpio_port*) port;
-
-    USB_DEBUG_PRINT(port->ctx->logfile, "Type: GPIO Path: ");
-
-    for (i = 0; i < gport->path_len-1; i++)
-        fprintf(port->ctx->logfile, "%u-", gport->path[i]);
-
-    fprintf(port->ctx->logfile, "%u State: %u Pwr: %u Gpio: %u ", gport->path[i],
-            gport->status, gport->pwr_state, gport->gpio_num);
-
-    if (gport->dev) {
-        libusb_get_device_descriptor(gport->dev, &desc);
-        fprintf(port->ctx->logfile, " Device: %.4x:%.4x", desc.idVendor, desc.idProduct);
-    }
-
-    fprintf(port->ctx->logfile, "\n");
-    fflush(port->ctx->logfile);
+    usb_helpers_print_port(port, "GPIO");
 }
 
 static void gpio_update_port(struct usb_port *port)
@@ -63,7 +45,7 @@ static void gpio_update_port(struct usb_port *port)
         gpio_val = 1;
 
     //Do a write, if write is successful then we update power state
-    snprintf(file_path, sizeof(file_path), "/sys/class/gpio/gpio%u/value", gport->gpio_num);
+    snprintf(file_path, sizeof(file_path), "/sys/class/gpio/gpio%u/value", gport->port_num);
 
     //USB_DEBUG_PRINT(port->ctx->logfile, "Will write %u to %s\n", gpio_val, file_path);
     
@@ -155,16 +137,12 @@ uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx, char *path,
     }
 
     memset(port, 0, sizeof(struct gpio_port));
-    memcpy(port->path, dev_path, path_len);
-    port->path_len = path_len;
-    port->pwr_state = POWER_ON;
+
     port->output = gpio_print_port;
     port->update = gpio_update_port;
     port->timeout = gpio_handle_timeout;
-    port->gpio_num = gpio_num;
-    port->ctx = ctx;
-
-    usb_monitor_lists_add_port(ctx, (struct usb_port*) port);
+    usb_helpers_configure_port((struct usb_port*) port,
+                               ctx, dev_path, path_len, gpio_num);
 
     return 0;
 }

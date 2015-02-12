@@ -7,7 +7,6 @@
 
 struct gpio_port {
     USB_PORT_MANDATORY;
-    uint8_t gpio_num;
 };
 
 struct json_object;

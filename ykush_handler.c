@@ -16,23 +16,7 @@ static void ykush_update_port(struct usb_port *port);
 /* TODO: Parts of this function is generic, split in two */
 static void ykush_print_port(struct usb_port *port)
 {
-    int i;
-    struct libusb_device_descriptor desc;
-
-    USB_DEBUG_PRINT(port->ctx->logfile, "Type: YKUSH Path: ");
-
-    for (i = 0; i < port->path_len-1; i++)
-        fprintf(port->ctx->logfile, "%u-", port->path[i]);
-
-    fprintf(port->ctx->logfile, "%u State: %u Pwr: %u ", port->path[i], port->status, port->pwr_state);
-
-    if (port->dev) {
-        libusb_get_device_descriptor(port->dev, &desc);
-        fprintf(port->ctx->logfile, " Device: %.4x:%.4x", desc.idVendor, desc.idProduct);
-    }
-
-    fprintf(port->ctx->logfile, "\n");
-    fflush(port->ctx->logfile);
+    usb_helpers_print_port(port, "YKUSH");
 }
 
 static void ykush_reset_cb(struct libusb_transfer *transfer)
@@ -204,24 +188,13 @@ static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
                                                comm_path + 1,
                                                sizeof(comm_path) - 1);
     for (i = 0; i < yhub->num_ports; i++) {
-        //PORT_NO_DEV_CONNECTED is 0, so no need setting it
         memset(&(yhub->port[i]), 0, sizeof(struct ykush_port));
-
-        //Create path, use path of comm device, but update port number (last
-        //value in path)
-        memcpy(yhub->port[i].path, comm_path, num_port_numbers + 1);
-        yhub->port[i].path[num_port_numbers] = i + 1;
-        yhub->port[i].path_len = num_port_numbers + 1;
-        yhub->port[i].port_num = i + 1;
-        yhub->port[i].pwr_state = POWER_ON;
-        yhub->port[i].parent = (struct usb_hub*) yhub;
+        comm_path[num_port_numbers] = i + 1;
         yhub->port[i].output = ykush_print_port;
         yhub->port[i].update = ykush_update_port;
         yhub->port[i].timeout = ykush_handle_timeout;
-        yhub->port[i].ctx = ctx;
-        
-        //Insert port into global list
-        usb_monitor_lists_add_port(ctx, (struct usb_port*) &(yhub->port[i]));
+        usb_helpers_configure_port((struct usb_port*) &(yhub->port[i]),
+                                   ctx, comm_path, num_port_numbers + 1, i + 1);
     }
 
     return num_ports;
@@ -251,7 +224,6 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
     //We need to have ownership of both devices, so we can match in del_device
     libusb_ref_device(device);
     libusb_ref_device(parent);
-
 
     yhub->hub_dev = parent;
     yhub->comm_dev = device;

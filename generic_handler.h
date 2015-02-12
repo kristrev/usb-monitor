@@ -16,7 +16,6 @@ struct generic_hub {
 
 struct generic_port {
     USB_PORT_MANDATORY;
-    uint8_t port_num;
 };
 
 int generic_event_cb(libusb_context *ctx, libusb_device *device,

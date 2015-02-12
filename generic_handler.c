@@ -12,30 +12,7 @@
 
 static void generic_print_port(struct usb_port *port)
 {
-    int i;
-    struct libusb_device_descriptor desc;
-
-    //Generic hubs often advertise a much larger number of ports than they
-    //provide. In order to avoid polluting the lists, only print ports that has
-    //a device connected
-    if (port->status != PORT_DEV_CONNECTED)
-        return;
-
-    USB_DEBUG_PRINT(port->ctx->logfile, "Type: Generic Path: ");
-
-    for (i = 0; i < port->path_len-1; i++)
-        fprintf(port->ctx->logfile, "%u-", port->path[i]);
-
-    fprintf(port->ctx->logfile, "%u State: %u Pwr: %u ", port->path[i], port->status, port->pwr_state);
-
-    if (port->dev) {
-        libusb_get_device_descriptor(port->dev, &desc);
-        fprintf(port->ctx->logfile, " Device: %.4x:%.4x", desc.idVendor, desc.idProduct);
-    }
-
-    fprintf(port->ctx->logfile, "\n");
-    fflush(port->ctx->logfile);
-
+    usb_helpers_print_port(port, "Generic");
 }
 
 static void generic_update_cb(struct libusb_transfer *transfer)
@@ -148,17 +125,14 @@ static void generic_configure_hub(struct usb_monitor_ctx *ctx,
     
     while (i < ghub->num_ports) {
         memset(gport, 0, sizeof(struct generic_port));
-        memcpy(gport->path, hub_path, num_port_numbers + 1);
-        gport->path[num_port_numbers + 1] = i + 1;
-        gport->path_len = num_port_numbers + 2;
-        gport->port_num = i + 1;
-        gport->pwr_state = POWER_ON;
-        gport->ctx = ctx;
+        hub_path[num_port_numbers + 1] = i + 1;
         gport->parent = (struct usb_hub*) ghub;
         gport->output = generic_print_port;
         gport->update = generic_update_port;
         gport->timeout = generic_timeout_port;
-        usb_monitor_lists_add_port(ctx, (struct usb_port*) gport);
+
+        usb_helpers_configure_port((struct usb_port*) gport,
+                                  ctx, hub_path, num_port_numbers + 2, i + 1);
 
         gport = gport + 1;
         ++i;
@@ -176,6 +150,9 @@ static void generic_add_device(libusb_context *ctx, libusb_device *device,
 
     libusb_get_device_descriptor(device, &desc);
 
+    if (usb_monitor_lists_find_hub(usbmon_ctx, device))
+        return;
+
     //Check if we support per port switching
     if (usb_helpers_get_power_switch(usbmon_ctx, device, desc.bcdUSB) != 1)
         return;
@@ -188,9 +165,6 @@ static void generic_add_device(libusb_context *ctx, libusb_device *device,
     USB_DEBUG_PRINT(usbmon_ctx->logfile,
                     "%.4x:%.4x supports port switching. Num. ports %u\n",
                     desc.idVendor, desc.idProduct, num_ports);
-
-    if (usb_monitor_lists_find_hub(usbmon_ctx, device))
-        return;
 
     ghub = malloc(sizeof(struct generic_hub) +
             (num_ports * sizeof(struct generic_port)));
@@ -250,6 +224,17 @@ static void generic_del_device(libusb_context *ctx, libusb_device *device,
 int generic_event_cb(libusb_context *ctx, libusb_device *device,
                    libusb_hotplug_event event, void *user_data)
 {
+    struct libusb_device_descriptor desc;
+
+    libusb_get_device_descriptor(device, &desc);
+
+    //For now, we blacklist the hub used in the YKUSH. This will be removed
+    //later, when I have a proper solution ready. Problem is that YKUSH exports
+    //a generic hub which advertises per-port power switching. This confuses our
+    //current algorithms
+    if (desc.idVendor == 0x0424 && desc.idProduct == 0x2514)
+        return 0;
+
 
     if (event == LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED)
         generic_add_device(ctx, device, user_data);

@@ -52,7 +52,7 @@ static void usb_monitor_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t for
 /* libusb-callbacks for when devices are added/removed. It is also called
  * manually when we detect a hub, since we risk devices being added before we
  * see for example the YKUSH HID device */
-void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
+static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
 {
     //Check if device is connected to a port we control
     struct usb_port *port;
@@ -61,17 +61,6 @@ void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     uint8_t path_len;
 
     libusb_get_device_descriptor(dev, &desc);
-
-    //This is duplicated code from the event callback. However, it is currently
-    //needed in order to handle the case were a hub fails to be added (for
-    //example if we can't claim device). When this happens, we will iterate
-    //through device and call usb_device_added for each. Hubs can be part of
-    //this list, thus, this check is needed here as well
-    //TODO: Think about how to unify code
-    if (desc.idVendor == YKUSH_VID && desc.idProduct == YKUSH_PID) {
-        ykush_event_cb(NULL, dev, LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED, ctx);
-        return;
-    }
     
     usb_helpers_fill_port_array(dev, path, &path_len);
     port = usb_monitor_lists_find_port_path(ctx, path, path_len);
@@ -119,7 +108,7 @@ static void usb_device_removed(struct usb_monitor_ctx *ctx, libusb_device *dev)
 }
 
 //Generic device callback
-static int usb_monitor_cb(libusb_context *ctx, libusb_device *device,
+int usb_monitor_cb(libusb_context *ctx, libusb_device *device,
                           libusb_hotplug_event event, void *user_data)
 {
     struct usb_monitor_ctx *usbmon_ctx = user_data;
@@ -141,7 +130,6 @@ static int usb_monitor_cb(libusb_context *ctx, libusb_device *device,
         ykush_event_cb(ctx, device, event, user_data);
     } else if (desc.bDeviceClass == LIBUSB_CLASS_HUB) {
         generic_event_cb(ctx, device, event, user_data);
-        usb_monitor_print_ports(usbmon_ctx);
     }
 
     return 0;
@@ -381,16 +369,83 @@ static void usb_monitor_print_usage()
     fprintf(stdout, "\t-h : this output\n");
 }
 
+static uint8_t usb_monitor_configure(struct usb_monitor_ctx *ctx)
+{
+    int i = 0;
+    const struct libusb_pollfd **libusb_fds;
+    const struct libusb_pollfd *libusb_fd;
+
+    LIST_INIT(&(ctx->hub_list));
+    LIST_INIT(&(ctx->port_list));
+    LIST_INIT(&(ctx->timeout_list));
+
+    ctx->event_loop = backend_event_loop_create(); 
+
+    if (ctx->event_loop == NULL) {
+        fprintf(stderr, "Failed to create event loop\n");
+        fclose(ctx->logfile);
+        return 1;
+    }
+    
+    libusb_fds = libusb_get_pollfds(NULL);
+    if (libusb_fds == NULL) {
+        fprintf(stderr, "Failed to get list of libusb fds to poll\n");
+        fclose(usbmon_ctx->logfile);
+        return 1;
+    }
+
+    ctx->libusb_handle = 
+        backend_create_epoll_handle(ctx, 0, usb_monitor_usb_event_cb, 1);
+
+    if (ctx->libusb_handle == NULL) {
+        fprintf(stderr, "Failed to create epoll handle\n");
+        fclose(usbmon_ctx->logfile);
+        return 1;
+    }
+
+    libusb_fd = libusb_fds[i];
+   
+    //Use one handler for all file descriptors. We know that there will always
+    //be at least one (USB) file descriptor we want to listen to (or one will
+    //come)
+    while (libusb_fd != NULL) {
+        backend_event_loop_update(ctx->event_loop,
+                                  libusb_fd->events,
+                                  EPOLL_CTL_ADD,
+                                  libusb_fd->fd,
+                                  ctx->libusb_handle);
+        libusb_fd = libusb_fds[++i];
+    }
+
+    free(libusb_fds);
+
+    libusb_set_pollfd_notifiers(NULL,
+                                usb_monitor_libusb_fd_add,
+                                usb_monitor_libusb_fd_remove,
+                                ctx);
+
+    libusb_hotplug_register_callback(NULL,
+                                     LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED |
+                                     LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT,
+                                     0,
+                                     LIBUSB_HOTPLUG_MATCH_ANY,
+                                     LIBUSB_HOTPLUG_MATCH_ANY,
+                                     LIBUSB_HOTPLUG_MATCH_ANY,
+                                     usb_monitor_cb,
+                                     usbmon_ctx, NULL);
+
+
+    return 0;
+}
+
 //TODO: Refactor this function, it is too big now
 int main(int argc, char *argv[])
 {
-    int retval = 0, i = 0;
+    int retval = 0;
     uint8_t daemonize = 0;
     char *conf_file_name = NULL;
     struct sigaction sig_handler;
     int32_t pid_fd;
-    const struct libusb_pollfd **libusb_fds;
-    const struct libusb_pollfd *libusb_fd;
 
     //We should only allow one running instance of usb_monitor
     pid_fd = open("/var/run/usb_monitor.pid", O_CREAT | O_RDWR | O_CLOEXEC, 0644);
@@ -434,29 +489,8 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    usbmon_ctx->event_loop = backend_event_loop_create(); 
-
-    if (usbmon_ctx->event_loop == NULL) {
-        fprintf(stderr, "Failed to create event loop\n");
-        fclose(usbmon_ctx->logfile);
-        exit(EXIT_FAILURE);
-    }
-
-    usbmon_ctx->event_loop->itr_cb = NULL;
-    usbmon_ctx->event_loop->itr_data = NULL;
-
-    LIST_INIT(&(usbmon_ctx->hub_list));
-    LIST_INIT(&(usbmon_ctx->port_list));
-    LIST_INIT(&(usbmon_ctx->timeout_list));
-
-    if (conf_file_name != NULL &&
-        usb_monitor_parse_config(usbmon_ctx, conf_file_name)) {
-        fprintf(stderr, "Failed to read config file\n");
-        fclose(usbmon_ctx->logfile);
-        exit(EXIT_FAILURE);
-    }
-    
     retval = libusb_init(NULL);
+
     if (retval) {
         fprintf(stderr, "libusb failed with error %s\n",
                 libusb_error_name(retval));
@@ -464,44 +498,16 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    libusb_fds = libusb_get_pollfds(NULL);
-    if (libusb_fds == NULL) {
-        fprintf(stderr, "Failed to get list of libusb fds to poll\n");
+    if (usb_monitor_configure(usbmon_ctx))
+        exit(EXIT_FAILURE);
+
+    if (conf_file_name != NULL &&
+        usb_monitor_parse_config(usbmon_ctx, conf_file_name)) {
+        fprintf(stderr, "Failed to read config file\n");
         fclose(usbmon_ctx->logfile);
         exit(EXIT_FAILURE);
     }
-
-    usbmon_ctx->libusb_handle = 
-        backend_create_epoll_handle(usbmon_ctx, 0, usb_monitor_usb_event_cb, 1);
-
-    if (usbmon_ctx->libusb_handle == NULL) {
-        fprintf(stderr, "Failed to create epoll handle\n");
-        fclose(usbmon_ctx->logfile);
-        exit(EXIT_FAILURE);
-    }
-
-
-    libusb_fd = libusb_fds[i];
    
-    //Use one handler for all file descriptors. We know that there will always
-    //be at least one (USB) file descriptor we want to listen to (or one will
-    //come)
-    while (libusb_fd != NULL) {
-        backend_event_loop_update(usbmon_ctx->event_loop,
-                                  libusb_fd->events,
-                                  EPOLL_CTL_ADD,
-                                  libusb_fd->fd,
-                                  usbmon_ctx->libusb_handle);
-        libusb_fd = libusb_fds[++i];
-    }
-
-    free(libusb_fds);
-
-    libusb_set_pollfd_notifiers(NULL,
-                                usb_monitor_libusb_fd_add,
-                                usb_monitor_libusb_fd_remove,
-                                usbmon_ctx);
-
     //Start signal handler
     sig_handler.sa_handler = usb_monitor_signal_handler;
 
@@ -517,15 +523,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    libusb_hotplug_register_callback(NULL,
-                                     LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED |
-                                     LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT,
-                                     LIBUSB_HOTPLUG_ENUMERATE,
-                                     LIBUSB_HOTPLUG_MATCH_ANY,
-                                     LIBUSB_HOTPLUG_MATCH_ANY,
-                                     LIBUSB_HOTPLUG_MATCH_ANY,
-                                     usb_monitor_cb,
-                                     usbmon_ctx, NULL);
+    usb_helpers_check_devices(usbmon_ctx);
 
     USB_DEBUG_PRINT(usbmon_ctx->logfile, "Initial state:\n");
     usb_monitor_print_ports(usbmon_ctx);
