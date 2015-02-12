@@ -1,0 +1,71 @@
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
+#include <unistd.h>
+#include <linux/rtnetlink.h>
+#include <libmnl/libmnl.h>
+
+#include "socket_utility.h"
+
+//TODO: Move functions to common library
+//TODO: Use logging macros instead of printf/perror/...
+int32_t socket_utility_create_unix_socket(int32_t type, int32_t protocol,
+                                          char *path_name, uint8_t listen_sock)
+{
+	int32_t sock_fd;
+	struct sockaddr_un local_addr;
+
+	memset(&local_addr, 0, sizeof(local_addr));
+
+	//It would have been nice to use the Linux abstract naming space and avoid
+	//any file system issues (like having to use remove), but no go with nginx
+	if (remove(path_name) == -1 && errno != ENOENT) {
+		perror("remove");
+		return -1;
+	}
+
+	if ((sock_fd = socket(AF_UNIX, type, protocol)) == -1) {
+		perror("socket");
+		return -1;
+	}
+
+	local_addr.sun_family = AF_UNIX;
+	//The -1, combined with the memeset, is to ensure that the the string in
+	//sun_addr is zero terminated.
+	strncpy(local_addr.sun_path, path_name,
+			sizeof(local_addr.sun_path) - 2);
+
+	if (bind(sock_fd, (struct sockaddr*) &local_addr,
+				sizeof(local_addr)) == -1) {
+		perror("bind");
+		close(sock_fd);
+		return -1;
+	}
+
+    //I wanted to use fchmod, but it does not work as intended. There are
+    //problems with it and fchmod
+    if (chmod(path_name, S_IRWXU) == -1){
+        perror("chmod");
+        return -1;
+    }
+
+	if (listen_sock) 
+		if (listen(sock_fd, PENDING_CONNECTIONS) == -1) {
+			perror("listen");
+			close(sock_fd);
+			return -1;
+		}
+
+	return sock_fd;
+}
+
+int32_t socket_utility_send(int32_t socket, void *buf, uint32_t buflen)
+{
+	//Filter out the SIGPIPE-signal (we handle -1 instead)
+	return send(socket, buf, buflen, MSG_NOSIGNAL);
+}

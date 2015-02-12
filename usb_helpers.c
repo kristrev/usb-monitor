@@ -1,21 +1,24 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 #include "usb_helpers.h"
 #include "usb_monitor.h"
 #include "usb_monitor_lists.h"
 #include "usb_logging.h"
+#include "usb_monitor_callbacks.h"
 
 void usb_helpers_configure_port(struct usb_port *port,
                                 struct usb_monitor_ctx *ctx,
                                 uint8_t *path, uint8_t path_len,
-                                uint8_t port_num)
+                                uint8_t port_num, struct usb_hub *parent)
 {
         memcpy(port->path, path, path_len);
         port->path_len = path_len;
         port->port_num = port_num;
         port->pwr_state = POWER_ON;
         port->ctx = ctx;
+        port->parent = parent;
 
         usb_monitor_lists_add_port(ctx, port);
 }
@@ -189,7 +192,9 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
         port->num_retrans++;
 
         if (port->num_retrans == USB_RETRANS_LIMIT) {
-            port->update(port);
+            port->num_retrans = 0;
+            if (port->msg_mode != RESET)
+                port->update(port);
             return;
         }
     } else {
@@ -308,4 +313,57 @@ void usb_helpers_fill_port_array(struct libusb_device *dev,
     *path_len = libusb_get_port_numbers(dev, path + 1, 7);
     //We use the bus as part of path
     *path_len += 1;
+}
+
+void usb_helpers_convert_path_char(struct usb_port *port, char *output,
+                                   uint8_t* output_len) {
+    uint8_t i, len = 0;
+
+    //Assumes output is large enough to store complete path
+    memset(output, 0, MAX_USB_PATH); 
+
+    for (i = 0; i < port->path_len - 1; i++)
+        len += snprintf(output + len, 4, "%u-", port->path[i]);
+
+    len += snprintf(output + len, 3, "%u", port->path[i]);
+    *output_len = len;
+}
+
+void usb_helpers_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t forced)
+{
+    struct usb_port *itr;
+
+    LIST_FOREACH(itr, &(ctx->port_list), port_next) {
+        //Only restart which are not connected and are currently not being reset
+        if (forced ||
+            (itr->status == PORT_NO_DEV_CONNECTED &&
+            itr->msg_mode != RESET))
+            itr->update(itr);
+    }
+}
+
+uint8_t usb_helpers_convert_char_to_path(char *path_str, uint8_t *path,
+                                         uint8_t *path_len) {
+
+    char *cur_val = NULL;
+    uint8_t i;
+    
+    //First, I need to parse path. Path is on format x-x-x-x-x
+    //TODO: Make generic when we enable user input
+    cur_val = strtok(path_str, "-");
+
+    for (i = 0; i < 8; i++) {
+        if (cur_val == NULL)
+            break;
+        
+        path[i] = (uint8_t) atoi(cur_val);
+        cur_val = strtok(NULL, "-");
+    }
+
+    if (i == 8 && cur_val != NULL) {
+        return 1;
+    } else {
+        *path_len = i;
+        return 0;
+    }
 }

@@ -101,26 +101,10 @@ uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx, char *path,
     //Bus + port(s)
     uint8_t dev_path[USB_PATH_MAX];
     uint8_t path_len = 0;
-    char *cur_val = NULL;
-    uint8_t i;
 
-    //First, I need to parse path. Path is on format x-x-x-x-x
-    //TODO: Make generic when we enable user input
-    cur_val = strtok(path, "-");
-
-    for (i = 0; i < 8; i++) {
-        if (cur_val == NULL)
-            break;
-        
-        dev_path[i] = (uint8_t) atoi(cur_val);
-        cur_val = strtok(NULL, "-");
-    }
-
-    if (i == 8 && cur_val != NULL) {
+    if (usb_helpers_convert_char_to_path(path, dev_path, &path_len)) {
         fprintf(stderr, "Path for GPIO device is too long\n");
         return 1;
-    } else {
-        path_len = i;
     }
 
     //TODO: Check if port is already in list
@@ -142,7 +126,7 @@ uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx, char *path,
     port->update = gpio_update_port;
     port->timeout = gpio_handle_timeout;
     usb_helpers_configure_port((struct usb_port*) port,
-                               ctx, dev_path, path_len, gpio_num);
+                               ctx, dev_path, path_len, gpio_num, NULL);
 
     return 0;
 }

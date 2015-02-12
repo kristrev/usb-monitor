@@ -126,13 +126,13 @@ static void generic_configure_hub(struct usb_monitor_ctx *ctx,
     while (i < ghub->num_ports) {
         memset(gport, 0, sizeof(struct generic_port));
         hub_path[num_port_numbers + 1] = i + 1;
-        gport->parent = (struct usb_hub*) ghub;
         gport->output = generic_print_port;
         gport->update = generic_update_port;
         gport->timeout = generic_timeout_port;
 
         usb_helpers_configure_port((struct usb_port*) gport,
-                                  ctx, hub_path, num_port_numbers + 2, i + 1);
+                                  ctx, hub_path, num_port_numbers + 2, i + 1,
+                                  (struct usb_hub*) ghub);
 
         gport = gport + 1;
         ++i;

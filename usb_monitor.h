@@ -6,15 +6,19 @@
 #include <sys/queue.h>
 #include <libusb-1.0/libusb.h>
 
-struct usb_port;
-struct backend_event_loop;
-struct backend_epoll_handle;
-
 #define DEFAULT_TIMEOUT_SEC 5
 #define ADDED_TIMEOUT_SEC 10
 #define USB_RETRANS_LIMIT 5
 #define PING_OUTPUT 20 //Only write ping sucess ~ever 100 sec
 #define USB_PATH_MAX 8 //len(path) + bus number
+
+#define NUM_CONNECTIONS 1
+#define MAX_HTTP_CLIENTS 5
+
+struct usb_port;
+struct backend_epoll_handle;
+struct backend_event_loop;
+struct http_client;
 
 //port function pointers
 typedef void (*print_port)(struct usb_port *port);
@@ -81,9 +85,13 @@ struct usb_port {
     USB_PORT_MANDATORY;
 };
 
+
 struct usb_monitor_ctx {
     struct backend_event_loop *event_loop;
     struct backend_epoll_handle *libusb_handle;
+    struct backend_epoll_handle *accept_handle;
+    struct http_client *clients[MAX_HTTP_CLIENTS];
+    uint8_t clients_map;
     struct timeval last_restart;
     struct timeval last_dev_check;
     FILE* logfile;
@@ -92,8 +100,7 @@ struct usb_monitor_ctx {
     struct ports timeout_list;
 };
 
-//We fake a callback in the device iteration function
-int usb_monitor_cb(libusb_context *ctx, libusb_device *device,
-                          libusb_hotplug_event event, void *user_data);
+//Output all of the ports, move to helpers?
+void usb_monitor_print_ports(struct usb_monitor_ctx *ctx);
 
 #endif

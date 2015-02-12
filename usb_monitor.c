@@ -7,6 +7,7 @@
 #include <string.h>
 #include <signal.h>
 #include <sys/types.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/epoll.h>
@@ -22,11 +23,14 @@
 #include "generic_handler.h"
 #include "usb_logging.h"
 #include "backend_event_loop.h"
+#include "usb_monitor_callbacks.h"
+#include "socket_utility.h"
+#include "usb_monitor_client.h"
 
 //Kept global so that I can access it from the signal handler
 static struct usb_monitor_ctx *usbmon_ctx = NULL;
 
-static void usb_monitor_print_ports(struct usb_monitor_ctx *ctx)
+void usb_monitor_print_ports(struct usb_monitor_ctx *ctx)
 {
     struct usb_port *itr;
 
@@ -36,129 +40,6 @@ static void usb_monitor_print_ports(struct usb_monitor_ctx *ctx)
     fprintf(ctx->logfile, "\n");
 }
 
-static void usb_monitor_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t forced)
-{
-    struct usb_port *itr;
-
-    LIST_FOREACH(itr, &(ctx->port_list), port_next) {
-        //Only restart which are not connected and are currently not being reset
-        if (forced ||
-            (itr->status == PORT_NO_DEV_CONNECTED &&
-            itr->msg_mode != RESET))
-            itr->update(itr);
-    }
-}
-
-/* libusb-callbacks for when devices are added/removed. It is also called
- * manually when we detect a hub, since we risk devices being added before we
- * see for example the YKUSH HID device */
-static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
-{
-    //Check if device is connected to a port we control
-    struct usb_port *port;
-    struct libusb_device_descriptor desc;
-    uint8_t path[USB_PATH_MAX];
-    uint8_t path_len;
-
-    libusb_get_device_descriptor(dev, &desc);
-    
-    usb_helpers_fill_port_array(dev, path, &path_len);
-    port = usb_monitor_lists_find_port_path(ctx, path, path_len);
-
-    if (!port)
-        return;
-
-    //Need to check port if it already has a device, since we can risk that we
-    //are called two times for one device
-    if (port->dev && port->dev == dev)
-        return;
-
-    USB_DEBUG_PRINT(ctx->logfile, "Device: %.4x:%.4x added\n", desc.idVendor, desc.idProduct);
-
-    //We need to configure port. So far, this is all generic
-    port->vid = desc.idVendor;
-    port->pid = desc.idProduct;
-    port->status = PORT_DEV_CONNECTED;
-    port->dev = dev;
-    port->msg_mode = PING;
-    libusb_ref_device(dev);
-
-    usb_monitor_print_ports(ctx);
-
-    //Whenever we detect a device, we need to add to timeout to send ping.
-    //However, we need to wait longer than the initial five seconds to let
-    //usb_modeswitch potentially works its magic
-    usb_helpers_start_timeout(port, ADDED_TIMEOUT_SEC);
-}
-
-static void usb_device_removed(struct usb_monitor_ctx *ctx, libusb_device *dev)
-{
-    uint8_t path[USB_PATH_MAX];
-    uint8_t path_len;
-    struct usb_port *port = NULL;
-
-    usb_helpers_fill_port_array(dev, path, &path_len);
-    port = usb_monitor_lists_find_port_path(ctx, path, path_len);
-
-    if (!port)
-        return;
-
-    usb_helpers_reset_port(port);
-    usb_monitor_print_ports(ctx);
-}
-
-//Generic device callback
-int usb_monitor_cb(libusb_context *ctx, libusb_device *device,
-                          libusb_hotplug_event event, void *user_data)
-{
-    struct usb_monitor_ctx *usbmon_ctx = user_data;
-    struct libusb_device_descriptor desc;
-
-    libusb_get_device_descriptor(device, &desc);
-
-    //Check if device belongs to a port we manage first. This is required for
-    //example for cascading hubs, we need to the hub from the port is is
-    //connected to, in addition to the port
-    if (event == LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED)
-        usb_device_added(usbmon_ctx, device);
-    else
-        usb_device_removed(usbmon_ctx, device);
-
-    //Multiple callbacks can be called multiple times, so it makes little sense
-    //to register a separate ykush callback, when we anyway have to filter here
-    if (desc.idVendor == YKUSH_VID && desc.idProduct == YKUSH_PID) {
-        ykush_event_cb(ctx, device, event, user_data);
-    } else if (desc.bDeviceClass == LIBUSB_CLASS_HUB) {
-        generic_event_cb(ctx, device, event, user_data);
-    }
-
-    return 0;
-}
-
-static void usb_monitor_check_timeouts(struct usb_monitor_ctx *ctx)
-{
-    struct usb_port *timeout_itr = NULL, *old_timeout = NULL;
-    struct timeval tv;
-    uint64_t cur_time;
-
-    gettimeofday(&tv, NULL);
-    cur_time = (tv.tv_sec * 1e6) + tv.tv_usec;
-
-    timeout_itr = ctx->timeout_list.lh_first;
-
-    while (timeout_itr != NULL) {
-        if (cur_time >= timeout_itr->timeout_expire) {
-            //Detatch from list, then run timeout
-            old_timeout = timeout_itr;
-            timeout_itr = timeout_itr->timeout_next.le_next;
-
-            usb_monitor_lists_del_timeout(old_timeout);
-            old_timeout->timeout(old_timeout);
-        } else {
-            timeout_itr = timeout_itr->timeout_next.le_next;
-        }
-    }
-}
 
 static uint8_t usb_monitor_parse_handlers(struct usb_monitor_ctx *ctx,
                                           struct json_object *handlers)
@@ -274,60 +155,7 @@ static uint8_t usb_monitor_parse_config(struct usb_monitor_ctx *ctx,
 static void usb_monitor_signal_handler(int signum)
 {
     USB_DEBUG_PRINT(usbmon_ctx->logfile, "Signalled to restart all ports\n");
-    usb_monitor_reset_all_ports(usbmon_ctx, 1);
-}
-
-//For events on USB socket
-static void usb_monitor_usb_event_cb(void *ptr, int32_t fd, uint32_t events)
-{
-    struct timeval tv = {0 ,0};
-    libusb_handle_events_timeout_completed(NULL, &tv, NULL);
-}
-
-static void usb_monitor_check_devices_cb(void *ptr)
-{
-    struct usb_monitor_ctx *ctx = ptr;
-    usb_helpers_check_devices(ctx);
-}
-
-static void usb_monitor_check_reset_cb(void *ptr)
-{
-    struct usb_monitor_ctx *ctx = ptr;
-    usb_monitor_reset_all_ports(ctx, 0);
-}
-
-//This function is called for every iteration + every second. Latter is needed
-//in case of restart
-static void usb_monitor_itr_cb(void *ptr)
-{
-    struct usb_monitor_ctx *ctx = ptr;
-    struct timeval tv = {0 ,0};
-
-
-    //First, check for any of libusb's timers. We are incontrol of timer, so no
-    //need for this function to block
-    libusb_handle_events_timeout_completed(NULL, &tv, NULL);
-
-    //Check if we have any pending timeouts
-    //TODO: Consider using the event loop timer queue for this
-    usb_monitor_check_timeouts(ctx);
-}
-
-static void usb_monitor_libusb_fd_add(int fd, short events, void *data)
-{
-    struct usb_monitor_ctx *ctx = data;
-
-    backend_event_loop_update(ctx->event_loop,
-                              events,
-                              EPOLL_CTL_ADD,
-                              fd,
-                              ctx->libusb_handle);
-}
-
-static void usb_monitor_libusb_fd_remove(int fd, void *data)
-{
-    //Closing a file descriptor causes it to be removed from epoll-set
-    close(fd);
+    usb_helpers_reset_all_ports(usbmon_ctx, 1);
 }
 
 static void usb_monitor_start_event_loop(struct usb_monitor_ctx *ctx)
@@ -360,16 +188,85 @@ static void usb_monitor_start_event_loop(struct usb_monitor_ctx *ctx)
     backend_event_loop_run(ctx->event_loop);
 }
 
-static void usb_monitor_print_usage()
+static void usb_monitor_configure_client(struct usb_monitor_ctx *ctx,
+                                         struct http_client *client,
+                                         int32_t sock,
+                                         uint8_t client_idx)
 {
-    fprintf(stdout, "usb monitor command line arguments:\n");
-    fprintf(stdout, "\t-o : path to log file (optional)\n");
-    fprintf(stdout, "\t-c : path to config file (optional)\n");
-    fprintf(stdout, "\t-d : run as daemon\n");
-    fprintf(stdout, "\t-h : this output\n");
+    memset(client, 0, sizeof(struct http_client));
+    client->ctx = ctx;
+    client->fd = sock;
+    client->idx = client_idx;
+
+    http_parser_init(&(client->parser), HTTP_REQUEST);
+    client->parser.data = (void*) client;
+    client->parser_settings.on_body = usb_monitor_client_on_body;
+    client->parser_settings.on_message_complete =
+        usb_monitor_client_on_complete;
+
+    backend_configure_epoll_handle(&(client->handle), client, sock,
+                                   usb_monitor_client_cb);
+    backend_event_loop_update(ctx->event_loop, EPOLLIN, EPOLL_CTL_ADD, sock,
+                              &(client->handle));
 }
 
-static uint8_t usb_monitor_configure(struct usb_monitor_ctx *ctx)
+static void usb_monitor_accept_cb(void *ptr, int32_t fd, uint32_t events)
+{
+    struct usb_monitor_ctx *ctx = ptr;
+    uint8_t client_idx = 0;
+    int32_t client_sock = accept(fd, NULL, NULL);
+    struct http_client *client = NULL;
+
+    //We can't handle more connections
+    if (!ctx->clients_map) {
+        close(client_sock);
+        return;
+    }
+
+    //Get the first set bit in map. Note the ffs returns 1 for lsb, convert to
+    //0-indexed
+    client_idx = ffs(ctx->clients_map) - 1;
+
+    //Allocate clients dynamically. We never free though, but it is not a
+    //problem with such a low number since we consume little memory anyways.
+    //However, if we increase number of concurrent clients, some sort of garbage
+    //collection will be needed
+    if (ctx->clients[client_idx] == NULL) {
+        client = malloc(sizeof(struct http_client));
+
+        if (client == NULL) {
+            USB_DEBUG_PRINT(ctx->logfile, "Could not allocate memory for client\n");
+            return;
+        } else {
+            ctx->clients[client_idx] = client;
+        }
+    } else {
+        client = ctx->clients[client_idx];
+    }
+
+    ctx->clients_map ^= (1 << client_idx);
+
+    //Start off by only supporting one concurrent client
+    usb_monitor_configure_client(ctx, client, client_sock, client_idx);
+    USB_DEBUG_PRINT(ctx->logfile, "Accepted new client with index: %u\n",
+                    client_idx);
+}
+
+static int usb_monitor_configure_unix_socket(struct usb_monitor_ctx *ctx)
+{
+    int32_t fd = socket_utility_create_unix_socket(SOCK_STREAM, 0,
+                                                   "/tmp/usbmonitor", 1);
+
+    if (fd == -1)
+        return fd;
+
+    backend_configure_epoll_handle(ctx->accept_handle, ctx, fd,
+                                   usb_monitor_accept_cb);
+    return backend_event_loop_update(ctx->event_loop, EPOLLIN, EPOLL_CTL_ADD,
+                                     fd, ctx->accept_handle);
+}
+
+static uint8_t usb_monitor_configure(struct usb_monitor_ctx *ctx, uint8_t sock)
 {
     int i = 0;
     const struct libusb_pollfd **libusb_fds;
@@ -379,18 +276,39 @@ static uint8_t usb_monitor_configure(struct usb_monitor_ctx *ctx)
     LIST_INIT(&(ctx->port_list));
     LIST_INIT(&(ctx->timeout_list));
 
+    //We handle maximum of five concurrent clients
+    ctx->clients_map = 0x1F;
     ctx->event_loop = backend_event_loop_create(); 
+
+    for (i = 0; i < MAX_HTTP_CLIENTS; i++)
+        ctx->clients[i] = NULL;
 
     if (ctx->event_loop == NULL) {
         fprintf(stderr, "Failed to create event loop\n");
         fclose(ctx->logfile);
         return 1;
     }
-    
+   
+    if (sock) {
+        ctx->accept_handle = backend_create_epoll_handle(ctx, 0, NULL, 0);
+
+        if (ctx->accept_handle == NULL) {
+            fprintf(stderr, "Could not create accept handle\n");
+            fclose(ctx->logfile);
+            return 1;
+        }
+
+        if (usb_monitor_configure_unix_socket(ctx)) {
+            fprintf(stderr, "Could not create UNIX socket\n");
+            fclose(ctx->logfile);
+            return 1;
+        }
+    }
+
     libusb_fds = libusb_get_pollfds(NULL);
     if (libusb_fds == NULL) {
         fprintf(stderr, "Failed to get list of libusb fds to poll\n");
-        fclose(usbmon_ctx->logfile);
+        fclose(ctx->logfile);
         return 1;
     }
 
@@ -399,10 +317,11 @@ static uint8_t usb_monitor_configure(struct usb_monitor_ctx *ctx)
 
     if (ctx->libusb_handle == NULL) {
         fprintf(stderr, "Failed to create epoll handle\n");
-        fclose(usbmon_ctx->logfile);
+        fclose(ctx->logfile);
         return 1;
     }
 
+    i = 0;
     libusb_fd = libusb_fds[i];
    
     //Use one handler for all file descriptors. We know that there will always
@@ -436,6 +355,15 @@ static uint8_t usb_monitor_configure(struct usb_monitor_ctx *ctx)
 
 
     return 0;
+}
+
+static void usb_monitor_print_usage()
+{
+    fprintf(stdout, "usb monitor command line arguments:\n");
+    fprintf(stdout, "\t-o : path to log file (optional)\n");
+    fprintf(stdout, "\t-c : path to config file (optional)\n");
+    fprintf(stdout, "\t-d : run as daemon\n");
+    fprintf(stdout, "\t-h : this output\n");
 }
 
 //TODO: Refactor this function, it is too big now
@@ -498,7 +426,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
-    if (usb_monitor_configure(usbmon_ctx))
+    if (usb_monitor_configure(usbmon_ctx, 1))
         exit(EXIT_FAILURE);
 
     if (conf_file_name != NULL &&

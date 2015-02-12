@@ -176,7 +176,6 @@ void backend_event_loop_run(struct backend_event_loop *del)
 
 		nfds = epoll_wait(del->efd, events, MAX_EPOLL_EVENTS, sleep_time);
 
-
 		if (nfds < 0)
 			continue;
 

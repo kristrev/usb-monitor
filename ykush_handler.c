@@ -194,7 +194,8 @@ static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
         yhub->port[i].update = ykush_update_port;
         yhub->port[i].timeout = ykush_handle_timeout;
         usb_helpers_configure_port((struct usb_port*) &(yhub->port[i]),
-                                   ctx, comm_path, num_port_numbers + 1, i + 1);
+                                   ctx, comm_path, num_port_numbers + 1, i + 1,
+                                   (struct usb_hub*) yhub);
     }
 
     return num_ports;
