@@ -397,6 +397,7 @@ int main(int argc, char *argv[])
 
     if (pid_fd == -1 ||
         lockf(pid_fd, F_TLOCK, 0)) {
+        fprintf(stderr, "Could not open pid file\n");
         exit(EXIT_FAILURE);
     }
 
