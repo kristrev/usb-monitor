@@ -109,8 +109,6 @@ static void ykush_update_port(struct usb_port *port)
 
     //Here I need to set my expected modei, to start handling errors
 
-    //USB_DEBUG_PRINT(yport->ctx->logfile, "Will send 0x%.2x to %u (%u) \n", port_cmd, yport->port_num, yport->pwr_state);
-
     //Follow the steps of the libusb async manual
     transfer = libusb_alloc_transfer(0);
 

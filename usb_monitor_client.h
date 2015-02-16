@@ -40,8 +40,11 @@ struct http_client {
     uint8_t idx;
 };
 
+//HTTP parse callbacks for the events we are interested in
 int usb_monitor_client_on_body(struct http_parser *parser, const char *at,
                                size_t length);
 int usb_monitor_client_on_complete(struct http_parser *parser);
+
+//Event loop callback (client socket)
 void usb_monitor_client_cb(void *ptr, int32_t fd, uint32_t events);
 #endif

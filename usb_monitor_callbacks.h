@@ -20,13 +20,19 @@
 
 #include <libusb-1.0/libusb.h>
 
+//Libusb event callback
 int usb_monitor_cb(libusb_context *ctx, libusb_device *device,
                           libusb_hotplug_event event, void *user_data);
 
+//Event callback from our event loop
 void usb_monitor_usb_event_cb(void *ptr, int32_t fd, uint32_t events);
+
+//These are the three timeout callbacks
 void usb_monitor_check_devices_cb(void *ptr);
 void usb_monitor_check_reset_cb(void *ptr);
 void usb_monitor_itr_cb(void *ptr);
+
+//Libusb file descriptor callbacks
 void usb_monitor_libusb_fd_add(int fd, short events, void *data);
 void usb_monitor_libusb_fd_remove(int fd, void *data);
 

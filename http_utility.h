@@ -52,6 +52,7 @@ struct http_client;
 int32_t insert_http_header(uint8_t major, uint8_t minor, char *format, 
                            char *buf, size_t bufsize);
 
+//Helper for inserting a header containing code different than 200
 int32_t insert_http_header_code(uint8_t major, uint8_t minor, char *format,
                                 char *buf, size_t bufsize, uint16_t code);
 #endif

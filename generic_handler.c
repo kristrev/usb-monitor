@@ -49,12 +49,10 @@ static void generic_update_cb(struct libusb_transfer *transfer)
         //can never interrupt a reset "call". There is no poing setting
         //msg_state to PING again. Device is disconnected, so it will be
         //connected again and we will set flag there
-        if (gport->pwr_state == POWER_ON) {
-            //USB_DEBUG_PRINT(gport->ctx->logfile, "Generic port %u is switched on again\n", gport->port_num);
+        if (gport->pwr_state == POWER_ON)
             gport->msg_mode = IDLE;
-        } else {
+        else
             usb_helpers_start_timeout((struct usb_port*) gport, DEFAULT_TIMEOUT_SEC);
-        }
     }
 }
 

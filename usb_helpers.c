@@ -205,7 +205,6 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
         port->num_retrans = 0;
     }
 
-    //ykush_print_port((struct usb_port*) yport);
     //We can only get into this function after timeout has been handeled and
     //removed from timeout list. It is therefore safe to add the port to the
     //timeout list again
@@ -225,10 +224,6 @@ static int32_t usb_helpers_configure_handle(struct usb_port *port)
         port->num_retrans++;
         usb_helpers_start_timeout(port, DEFAULT_TIMEOUT_SEC);
     }
-
-    //According my understanding, a control transfer does not go to a specific
-    //endpoing. Thus, there is no need to claim the interface or do anything
-    //with the driver
 
     return retval;
 }
