@@ -49,11 +49,13 @@ ignore the URL and only look at HTTP method.
 
 GET is used to get the status, vid and pid of the ports. An example of the
 output is:
-{"ports":[{"path":"3-1-2-5-4-3","mode":1,"vid":4817,"pid":5382}]}
+
+`{"ports":[{"path":"3-1-2-5-4-3","mode":1,"vid":4817,"pid":5382}]}`
 
 In order to restart one or more devices, a POST request must be sent. The syntax
 is as follows:
-{"ports": [{"path":"3-1-2-5-4-3", "cmd": 1}]}
+
+`{"ports": [{"path":"3-1-2-5-4-3", "cmd": 1}]}`
 
 The reply is the same as for the GET request. Only the root-user can currently
 send HTTP requests to USB Monitor.
