@@ -18,7 +18,7 @@
 #include <string.h>
 
 //TODO: Check this file closer, maybe there is something more I can use
-#include <usb.h>
+#include "usb-kernel.h"
 
 #include "generic_handler.h"
 #include "usb_monitor.h"
