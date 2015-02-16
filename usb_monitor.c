@@ -415,7 +415,7 @@ int main(int argc, char *argv[])
     while ((retval = getopt(argc, argv, "o:c:dh")) != -1) {
         switch (retval) {
         case 'o':
-            usbmon_ctx->logfile = fopen(optarg, "w+");  
+            usbmon_ctx->logfile = fopen(optarg, "a+");
             break;
         case 'c':
             conf_file_name = optarg;
