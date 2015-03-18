@@ -164,7 +164,6 @@ void usb_monitor_itr_cb(void *ptr)
     struct usb_monitor_ctx *ctx = ptr;
     struct timeval tv = {0 ,0};
 
-
     //First, check for any of libusb's timers. We are incontrol of timer, so no
     //need for this function to block
     libusb_handle_events_timeout_completed(NULL, &tv, NULL);

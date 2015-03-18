@@ -119,7 +119,7 @@ struct backend_timeout_handle* backend_event_loop_add_timeout(
     //In an improved version, handle can be passed as argument so that it is up
     //to application how to allocate it
     struct backend_timeout_handle *handle =
-        malloc(sizeof(struct backend_timeout_handle));
+        calloc(sizeof(struct backend_timeout_handle), 1);
 
     if (!handle)
         return NULL;
@@ -151,6 +151,8 @@ static void backend_event_loop_run_timers(struct backend_event_loop *del)
             //Execute and remove timeout from list
             cur_timeout->cb(cur_timeout->data);
             LIST_REMOVE(cur_timeout, timeout_next);
+            cur_timeout->timeout_next.le_next = NULL;
+            cur_timeout->timeout_next.le_prev = NULL;
 
             //Rearm timer or free memory if we are done
             if (cur_timeout->intvl) {
