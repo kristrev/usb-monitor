@@ -20,6 +20,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <sys/queue.h>
 #include <libusb-1.0/libusb.h>
 
@@ -115,6 +116,7 @@ struct usb_monitor_ctx {
     LIST_HEAD(hubs, usb_hub) hub_list;
     LIST_HEAD(ports, usb_port) port_list;
     struct ports timeout_list;
+    gid_t group_id;
 };
 
 //Output all of the ports, move to helpers?
