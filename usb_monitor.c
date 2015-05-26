@@ -272,7 +272,8 @@ static void usb_monitor_accept_cb(void *ptr, int32_t fd, uint32_t events)
 static int usb_monitor_configure_unix_socket(struct usb_monitor_ctx *ctx)
 {
     int32_t fd = socket_utility_create_unix_socket(SOCK_STREAM, 0,
-                                                   "/tmp/usbmonitor", 1);
+                                                   "/tmp/usbmonitor", 1,
+                                                   ctx->group_id);
 
     if (fd == -1)
         return fd;
@@ -379,6 +380,7 @@ static void usb_monitor_print_usage()
     fprintf(stdout, "usb monitor command line arguments:\n");
     fprintf(stdout, "\t-o : path to log file (optional)\n");
     fprintf(stdout, "\t-c : path to config file (optional)\n");
+    fprintf(stdout, "\t-g : group id of usb monitor socket (optional)\n");
     fprintf(stdout, "\t-d : run as daemon\n");
     fprintf(stdout, "\t-h : this output\n");
 }
@@ -409,10 +411,11 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Failed to allocated application context struct\n");
         exit(EXIT_FAILURE);
     }
-    
-    usbmon_ctx->logfile = stderr;
 
-    while ((retval = getopt(argc, argv, "o:c:dh")) != -1) {
+    usbmon_ctx->logfile = stderr;
+    usbmon_ctx->group_id = 0;
+
+    while ((retval = getopt(argc, argv, "o:c:g:dh")) != -1) {
         switch (retval) {
         case 'o':
             usbmon_ctx->logfile = fopen(optarg, "a+");
@@ -422,6 +425,9 @@ int main(int argc, char *argv[])
             break;
         case 'd':
             daemonize = 1;
+            break;
+        case 'g':
+            usbmon_ctx->group_id = atoi(optarg);
             break;
         case 'h':
         default:
@@ -453,7 +459,7 @@ int main(int argc, char *argv[])
         fclose(usbmon_ctx->logfile);
         exit(EXIT_FAILURE);
     }
-   
+
     //Start signal handler
     sig_handler.sa_handler = usb_monitor_signal_handler;
 
