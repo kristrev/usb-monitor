@@ -436,6 +436,13 @@ int main(int argc, char *argv[])
         } 
     }
 
+    if (daemonize && daemon(1,1)) {
+        fprintf(stderr, "Failed to start usb-monitor as daemon\n");
+        fclose(usbmon_ctx->logfile);
+        libusb_exit(NULL);
+        exit(EXIT_FAILURE);
+    }
+
     if (usbmon_ctx->logfile == NULL) {
         fprintf(stderr, "Failed to create logfile\n");
         exit(EXIT_FAILURE);
@@ -465,13 +472,6 @@ int main(int argc, char *argv[])
 
     if (sigaction(SIGUSR1, &sig_handler, NULL)) {
         fprintf(stderr, "Could not intall signal handler\n");
-        exit(EXIT_FAILURE);
-    }
-
-    if (daemonize && daemon(1,1)) {
-        fprintf(stderr, "Failed to start usb-monitor as daemon\n");
-        fclose(usbmon_ctx->logfile);
-        libusb_exit(NULL);
         exit(EXIT_FAILURE);
     }
 
