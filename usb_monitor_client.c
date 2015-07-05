@@ -314,13 +314,11 @@ void usb_monitor_client_cb(void *ptr, int32_t fd, uint32_t events)
                                           client->recv_buf,
                                           numbytes);
 
-    if (numbytes_parsed != numbytes || client->parser.http_errno != HPE_OK) {
+    if (numbytes_parsed != numbytes || client->parser.http_errno != HPE_OK)
         usb_monitor_client_close(client);
-        return;
-    } else if (client->recv_progress == MAX_REQUEST_SIZE && !client->req_done) {
+    else if (client->recv_progress == MAX_REQUEST_SIZE && !client->req_done)
         usb_monitor_client_close(client);
-    } else if (client->req_done) {
+    else if (client->req_done)
         usb_monitor_client_close(client);
-    }
 }
 

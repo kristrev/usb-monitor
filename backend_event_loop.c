@@ -108,10 +108,6 @@ static void backend_insert_timeout(struct backend_event_loop *del,
     LIST_INSERT_AFTER(prev_itr, handle, timeout_next);
 }
 
-//For now, this has to be set before event loop is run. Can't be update while
-//running.
-//TODO: Use absolute time instead. Then I can have timeouts in a sorted list (or
-//other data structure) and use difftime-ish instead
 struct backend_timeout_handle* backend_event_loop_add_timeout(
         struct backend_event_loop *del, uint64_t timeout_clock,
         backend_timeout_cb timeout_cb, void *ptr, uint32_t intvl)

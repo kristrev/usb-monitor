@@ -46,6 +46,9 @@ static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     if (!port)
         return;
 
+    if (port->msg_mode == RESET)
+        return;
+
     //Need to check port if it already has a device, since we can risk that we
     //are called two times for one device
     if (port->dev && port->dev == dev)
