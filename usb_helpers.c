@@ -327,13 +327,22 @@ void usb_helpers_convert_path_char(struct usb_port *port, char *output,
 void usb_helpers_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t forced)
 {
     struct usb_port *itr;
+    uint8_t i;
 
     LIST_FOREACH(itr, &(ctx->port_list), port_next) {
         //Only restart which are not connected and are currently not being reset
         if (forced ||
             (itr->status == PORT_NO_DEV_CONNECTED &&
-            itr->msg_mode != RESET))
+            itr->msg_mode != RESET)) {
+            USB_DEBUG_PRINT(ctx->logfile, "Will restart path: ");
+
+            for (i = 0; i < itr->path_len-1; i++)
+                fprintf(ctx->logfile, "%u-", itr->path[i]);
+
+            fprintf(ctx->logfile, "%u State: %u Pwr: %u\n", itr->path[i], itr->status, itr->pwr_state);
+
             itr->update(itr);
+        }
     }
 }
 
