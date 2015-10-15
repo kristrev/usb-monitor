@@ -1,0 +1,9 @@
+/var/log/usb-monitor.log {
+	su root root
+	rotate 1
+	daily
+	size 5M
+	compress
+	notifempty
+	copytruncate
+}
