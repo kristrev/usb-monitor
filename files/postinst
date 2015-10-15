@@ -1,0 +1,8 @@
+#!/bin/sh
+
+chown root:root /etc/logrotate.d/usb-monitor
+
+systemctl enable usb-monitor
+systemctl start usb-monitor
+
+service rsyslog restart

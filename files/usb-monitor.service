@@ -1,0 +1,15 @@
+[Install]
+WantedBy=multi-user.target
+
+[Unit]
+Description=USB Monitor
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/usb_monitor -o /var/log/usb-monitor.log
+Type=simple
+Restart=on-failure
+
+# 'sshd -D' leaks stderr and confuses things in conjunction with 'console log'
+StandardError=null
+StandardOutput=null
