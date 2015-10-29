@@ -372,6 +372,13 @@ static uint8_t usb_monitor_configure(struct usb_monitor_ctx *ctx, uint8_t sock)
                                      usbmon_ctx, NULL);
 
 
+    //libusb documentation is a bit unclear on the interaction between event
+    //loops, the libusb thread and hotplug events/async transfers. However, the
+    //documentation states that if poll() is used to monitor file descriptors,
+    //then the libusb event lock must be acquired. The lock shall only be
+    //released when we are done handling libusb events, i.e., never
+    libusb_lock_events(NULL);
+
     return 0;
 }
 
