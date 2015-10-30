@@ -16,12 +16,14 @@ set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libusb-dev, libjson-c-dev")
 include(CPack)
 
-install(FILES ${PROJECT_SOURCE_DIR}/../files/usb-monitor.logrotate DESTINATION
-        /etc/logrotate.d PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
-        RENAME usb-monitor)
-install(FILES ${PROJECT_SOURCE_DIR}/../files/usb-monitor.service DESTINATION
-        /lib/systemd/system/ PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
-        RENAME usb-monitor.service)
+if (NOT TARGET_OWRT)
+    install(FILES ${PROJECT_SOURCE_DIR}/../files/usb-monitor.logrotate DESTINATION
+            /etc/logrotate.d PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
+            RENAME usb-monitor)
+    install(FILES ${PROJECT_SOURCE_DIR}/../files/usb-monitor.service DESTINATION
+            /lib/systemd/system/ PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
+            RENAME usb-monitor.service)
+endif()
 
 add_executable(usb_monitor
                usb_helpers.c
