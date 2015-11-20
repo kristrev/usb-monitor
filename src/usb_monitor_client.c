@@ -93,13 +93,13 @@ static json_object *usb_monitor_client_get_json(struct usb_monitor_ctx *ctx)
             json_object_object_add(port, "mode", port_add);
 
         //vid/pid
-        port_add = json_object_new_int(itr->vid);
+        port_add = json_object_new_int(itr->u.vp.vid);
         if (port_add == NULL)
             break;
         else
             json_object_object_add(port, "vid", port_add);
 
-        port_add = json_object_new_int(itr->pid);
+        port_add = json_object_new_int(itr->u.vp.pid);
         if (port_add == NULL)
             break;
         else

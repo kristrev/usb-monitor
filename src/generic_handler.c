@@ -36,7 +36,8 @@ static void generic_update_cb(struct libusb_transfer *transfer)
 	struct generic_port *gport = (struct generic_port*) transfer->user_data;
 
 	if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
-        USB_DEBUG_PRINT(gport->ctx->logfile, "Failed to flip %u (%.4x:%.4x)\n", gport->port_num, gport->vid, gport->pid);
+        USB_DEBUG_PRINT(gport->ctx->logfile, "Failed to flip %u (%.4x:%.4x)\n",
+                gport->port_num, gport->u.vp.vid, gport->u.vp.pid);
         //Set to IDLE in case of transfer error, we will then retry up/down on
         //next timeout (or on user request)
         gport->msg_mode = IDLE;

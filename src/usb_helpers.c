@@ -169,8 +169,8 @@ void usb_helpers_reset_port(struct usb_port *port)
         usb_monitor_lists_del_timeout(port);
     }
 
-    port->vid = 0;
-    port->pid = 0;
+    port->u.vp.vid = 0;
+    port->u.vp.pid = 0;
     port->dev = NULL;
     port->dev_handle = NULL;
     port->status = PORT_NO_DEV_CONNECTED;
@@ -188,7 +188,8 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
         return;
 
     if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
-        USB_DEBUG_PRINT(port->ctx->logfile, "Ping failed for %.4x:%.4x\n", port->vid, port->pid);
+        USB_DEBUG_PRINT(port->ctx->logfile, "Ping failed for %.4x:%.4x\n",
+                port->u.vp.vid, port->u.vp.pid);
         port->num_retrans++;
 
         if (port->num_retrans == USB_RETRANS_LIMIT) {
@@ -199,7 +200,8 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
         }
     } else {
         if (++port->ping_cnt == PING_OUTPUT) {
-            USB_DEBUG_PRINT(port->ctx->logfile, "Ping success for %.4x:%.4x\n", port->vid, port->pid);
+            USB_DEBUG_PRINT(port->ctx->logfile, "Ping success for %.4x:%.4x\n",
+                    port->u.vp.vid, port->u.vp.pid);
             port->ping_cnt = 0;
         }
         port->num_retrans = 0;
@@ -324,15 +326,38 @@ void usb_helpers_convert_path_char(struct usb_port *port, char *output,
     *output_len = len;
 }
 
+static const uint32_t usb_helpers_bad_ids[] = {
+    //MF910 in bad state (temprature related reboot)
+    0x19d22004
+};
+
+static uint8_t usb_helpers_check_bad_id(struct usb_monitor_ctx *ctx, struct usb_port *port)
+{
+    uint32_t num_bad_ids = sizeof(usb_helpers_bad_ids) / sizeof(uint32_t);
+    uint32_t i;
+
+    for (i = 0; i < num_bad_ids; i++) {
+        if (port->u.vp_long.vidpid == usb_helpers_bad_ids[i]) {
+            USB_DEBUG_PRINT(ctx->logfile, "Will restart due to bad ID %x\n",
+                    port->u.vp_long.vidpid);
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 void usb_helpers_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t forced)
 {
     struct usb_port *itr;
 
     LIST_FOREACH(itr, &(ctx->port_list), port_next) {
         //Only restart which are not connected and are currently not being reset
-        if (forced ||
-            (itr->status == PORT_NO_DEV_CONNECTED &&
-            itr->msg_mode != RESET))
+        if (itr->msg_mode == RESET)
+            continue;
+
+        if (forced || itr->status == PORT_NO_DEV_CONNECTED ||
+                usb_helpers_check_bad_id(ctx, itr))
             itr->update(itr);
     }
 }

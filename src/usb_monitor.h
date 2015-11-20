@@ -61,8 +61,15 @@ typedef void (*handle_timeout)(struct usb_port *port);
     update_port update; \
     handle_timeout timeout; \
     uint64_t timeout_expire; \
-    uint16_t vid; \
-    uint16_t pid; \
+    union { \
+        struct { \
+            uint16_t vid; \
+            uint16_t pid; \
+        } vp; \
+        struct { \
+            uint32_t vidpid; \
+        } vp_long; \
+    } u; \
     uint8_t status; \
     uint8_t pwr_state; \
     uint8_t msg_mode; \
