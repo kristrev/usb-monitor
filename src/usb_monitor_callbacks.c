@@ -107,7 +107,8 @@ int usb_monitor_cb(libusb_context *ctx, libusb_device *device,
 
     //Multiple callbacks can be called multiple times, so it makes little sense
     //to register a separate ykush callback, when we anyway have to filter here
-    if (desc.idVendor == YKUSH_VID && desc.idProduct == YKUSH_PID) {
+    if (desc.idVendor == YKUSH_VID &&
+        (desc.idProduct == YKUSH_PID || desc.idProduct == YKUSH_PID2)) {
         ykush_event_cb(ctx, device, event, user_data);
     }/* else if (desc.bDeviceClass == LIBUSB_CLASS_HUB) {
         generic_event_cb(ctx, device, event, user_data);
