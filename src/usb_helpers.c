@@ -8,12 +8,16 @@
 #include "usb_logging.h"
 #include "usb_monitor_callbacks.h"
 
-void usb_helpers_configure_port(struct usb_port *port,
-                                struct usb_monitor_ctx *ctx,
-                                uint8_t *path, uint8_t path_len,
-                                uint8_t port_num, struct usb_hub *parent)
+uint8_t usb_helpers_configure_port(struct usb_port *port,
+                                   struct usb_monitor_ctx *ctx,
+                                   const char *path, uint8_t path_len,
+                                   uint8_t port_num, struct usb_hub *parent)
 {
-        memcpy(port->path, path, path_len);
+        port->path[0] = strndup(path, path_len);
+
+        if (port->path[0] == NULL)
+            return 1;
+
         port->path_len = path_len;
         port->port_num = port_num;
         port->pwr_state = POWER_ON;
@@ -21,6 +25,18 @@ void usb_helpers_configure_port(struct usb_port *port,
         port->parent = parent;
 
         usb_monitor_lists_add_port(ctx, port);
+
+        return 0;
+}
+
+void usb_helpers_release_port(struct usb_port *port)
+{
+    uint8_t i = 0;
+
+    for (i = 0; i < MAX_NUM_PATHS; i++) {
+        if (port->path[i])
+            free(port->path[i]);
+    }
 }
 
 void usb_helpers_print_port(struct usb_port *port, const char *type)
@@ -37,9 +53,9 @@ void usb_helpers_print_port(struct usb_port *port, const char *type)
     USB_DEBUG_PRINT(port->ctx->logfile, "Type: %s Path: ", type);
 
     for (i = 0; i < port->path_len-1; i++)
-        fprintf(port->ctx->logfile, "%u-", port->path[i]);
+        fprintf(port->ctx->logfile, "%u-", port->path[0][i]);
 
-    fprintf(port->ctx->logfile, "%u State: %u Pwr: %u ", port->path[i],
+    fprintf(port->ctx->logfile, "%u State: %u Pwr: %u ", port->path[0][i],
             port->status, port->pwr_state);
 
     if (port->dev) {
@@ -320,9 +336,9 @@ void usb_helpers_convert_path_char(struct usb_port *port, char *output,
     memset(output, 0, MAX_USB_PATH); 
 
     for (i = 0; i < port->path_len - 1; i++)
-        len += snprintf(output + len, 4, "%u-", port->path[i]);
+        len += snprintf(output + len, 4, "%u-", port->path[0][i]);
 
-    len += snprintf(output + len, 3, "%u", port->path[i]);
+    len += snprintf(output + len, 3, "%u", port->path[0][i]);
     *output_len = len;
 }
 

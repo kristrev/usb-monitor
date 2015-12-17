@@ -29,6 +29,7 @@
 #define USB_RETRANS_LIMIT 5
 #define PING_OUTPUT 20 //Only write ping sucess ~ever 100 sec
 #define USB_PATH_MAX 8 //len(path) + bus number
+#define MAX_NUM_PATHS 2 //How many paths can be controlled by one port
 
 #define NUM_CONNECTIONS 1
 #define MAX_HTTP_CLIENTS 5
@@ -57,6 +58,7 @@ typedef void (*handle_timeout)(struct usb_port *port);
     struct usb_monitor_ctx *ctx; \
     libusb_device *dev; \
     libusb_device_handle *dev_handle;\
+    char *path[MAX_NUM_PATHS]; \
     print_port output; \
     update_port update; \
     handle_timeout timeout; \
@@ -78,7 +80,6 @@ typedef void (*handle_timeout)(struct usb_port *port);
     uint8_t ping_cnt; \
     uint8_t port_num; \
     uint8_t ping_buf[LIBUSB_CONTROL_SETUP_SIZE + 2]; \
-    uint8_t path[USB_PATH_MAX]; \
     LIST_ENTRY(usb_port) port_next; \
     LIST_ENTRY(usb_port) timeout_next
 

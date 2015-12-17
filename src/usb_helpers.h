@@ -21,10 +21,13 @@ struct hub_descriptor {
 } __attribute__((packed));
 
 //Configure the generic components of a port
-void usb_helpers_configure_port(struct usb_port *port,
-                                struct usb_monitor_ctx *ctx,
-                                uint8_t *path, uint8_t path_len,
-                                uint8_t port_num, struct usb_hub *parent);
+uint8_t usb_helpers_configure_port(struct usb_port *port,
+                                   struct usb_monitor_ctx *ctx,
+                                   const char *path, uint8_t path_len,
+                                   uint8_t port_num, struct usb_hub *parent);
+
+//Release memory contained in the generic part of usb port
+void usb_helpers_release_port(struct usb_port *port);
 
 //Generic output function for a usb port
 void usb_helpers_print_port(struct usb_port *port, const char *type);

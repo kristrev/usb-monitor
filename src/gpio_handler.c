@@ -110,6 +110,7 @@ uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx, char *path,
 
     //Bus + port(s)
     uint8_t dev_path[USB_PATH_MAX];
+    const char *dev_path_ptr = (const char *) dev_path;
     uint8_t path_len = 0;
 
     if (usb_helpers_convert_char_to_path(path, dev_path, &path_len)) {
@@ -135,8 +136,13 @@ uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx, char *path,
     port->output = gpio_print_port;
     port->update = gpio_update_port;
     port->timeout = gpio_handle_timeout;
-    usb_helpers_configure_port((struct usb_port*) port,
-                               ctx, dev_path, path_len, gpio_num, NULL);
+
+    if (usb_helpers_configure_port((struct usb_port*) port,
+                               ctx, dev_path_ptr, path_len, gpio_num, NULL)) {
+        free(port);
+        fprintf(stderr, "Failed to configure gpio port\n");
+        return 1;
+    }
 
     return 0;
 }
