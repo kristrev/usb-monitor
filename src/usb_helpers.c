@@ -18,7 +18,7 @@ uint8_t usb_helpers_configure_port(struct usb_port *port,
         if (port->path[0] == NULL)
             return 1;
 
-        port->path_len = path_len;
+        port->path_len[0] = path_len;
         port->port_num = port_num;
         port->pwr_state = POWER_ON;
         port->ctx = ctx;
@@ -27,6 +27,31 @@ uint8_t usb_helpers_configure_port(struct usb_port *port,
         usb_monitor_lists_add_port(ctx, port);
 
         return 0;
+}
+
+uint8_t usb_helpers_port_add_path(struct usb_port *port, const char *path,
+                                  uint8_t path_len)
+{
+    uint8_t i = 0;
+
+    for (i = 0; i < MAX_NUM_PATHS; i++) {
+        if (!port->path[i])
+            break;
+    }
+
+    //TODO: Decide how to handle this better than just silently fail
+    if (i == MAX_NUM_PATHS)
+        return 1;
+
+    port->path[i] = strndup(path, path_len);
+
+    //TODO: Fail better
+    if (!port->path[i])
+        return 1;
+
+    port->path_len[i] = path_len;
+
+    return 0;
 }
 
 void usb_helpers_release_port(struct usb_port *port)
@@ -41,22 +66,34 @@ void usb_helpers_release_port(struct usb_port *port)
 
 void usb_helpers_print_port(struct usb_port *port, const char *type)
 {
-    int i;
+    int i, j;
     struct libusb_device_descriptor desc;
 
     //Generic hubs often advertise a much larger number of ports than they
     //provide. In order to avoid polluting the lists, only print ports that has
     //a device connected
-    if (port->status != PORT_DEV_CONNECTED)
-        return;
+    /*if (port->status != PORT_DEV_CONNECTED)
+        return;*/
 
     USB_DEBUG_PRINT(port->ctx->logfile, "Type: %s Path: ", type);
 
-    for (i = 0; i < port->path_len-1; i++)
-        fprintf(port->ctx->logfile, "%u-", port->path[0][i]);
+    for (j = 0; j < MAX_NUM_PATHS; j++) {
+        if (port->path[j] == NULL)
+            break;
 
-    fprintf(port->ctx->logfile, "%u State: %u Pwr: %u ", port->path[0][i],
-            port->status, port->pwr_state);
+        if (j)
+            fprintf(port->ctx->logfile, "/");
+
+        for (i = 0; i < port->path_len[j]; i++) {
+            if (i != (port->path_len[j] - 1))
+                fprintf(port->ctx->logfile, "%u-", port->path[j][i]);
+            else
+                fprintf(port->ctx->logfile, "%u", port->path[j][i]);
+        }
+    }
+
+    fprintf(port->ctx->logfile, " State: %u Pwr: %u ", port->status,
+            port->pwr_state);
 
     if (port->dev) {
         libusb_get_device_descriptor(port->dev, &desc);
@@ -329,16 +366,16 @@ void usb_helpers_fill_port_array(struct libusb_device *dev,
 }
 
 void usb_helpers_convert_path_char(struct usb_port *port, char *output,
-                                   uint8_t* output_len) {
+                                   uint8_t* output_len, uint8_t path_idx) {
     uint8_t i, len = 0;
 
     //Assumes output is large enough to store complete path
     memset(output, 0, MAX_USB_PATH); 
 
-    for (i = 0; i < port->path_len - 1; i++)
-        len += snprintf(output + len, 4, "%u-", port->path[0][i]);
+    for (i = 0; i < port->path_len[path_idx] - 1; i++)
+        len += snprintf(output + len, 4, "%u-", port->path[path_idx][i]);
 
-    len += snprintf(output + len, 3, "%u", port->path[0][i]);
+    len += snprintf(output + len, 3, "%u", port->path[path_idx][i]);
     *output_len = len;
 }
 

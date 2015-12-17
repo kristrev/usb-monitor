@@ -210,6 +210,8 @@ static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
         yhub->port[i].output = ykush_print_port;
         yhub->port[i].update = ykush_update_port;
         yhub->port[i].timeout = ykush_handle_timeout;
+        yhub->port[i].port_type = PORT_TYPE_YKUSH;
+
 
         retval = usb_helpers_configure_port((struct usb_port*) &(yhub->port[i]),
                                             ctx, comm_path_ptr,

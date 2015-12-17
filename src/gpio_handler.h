@@ -28,7 +28,6 @@ struct gpio_port {
 
 struct json_object;
 
-uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx, char *path, uint8_t gpio_num);
 uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx, struct json_object *json);
 
 #endif
