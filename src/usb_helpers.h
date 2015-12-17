@@ -21,10 +21,17 @@ struct hub_descriptor {
 } __attribute__((packed));
 
 //Configure the generic components of a port
-void usb_helpers_configure_port(struct usb_port *port,
-                                struct usb_monitor_ctx *ctx,
-                                uint8_t *path, uint8_t path_len,
-                                uint8_t port_num, struct usb_hub *parent);
+uint8_t usb_helpers_configure_port(struct usb_port *port,
+                                   struct usb_monitor_ctx *ctx,
+                                   const char *path, uint8_t path_len,
+                                   uint8_t port_num, struct usb_hub *parent);
+
+//Release memory contained in the generic part of usb port
+void usb_helpers_release_port(struct usb_port *port);
+
+//Add path to existing port
+uint8_t usb_helpers_port_add_path(struct usb_port *port, const char *path,
+                                  uint8_t path_len);
 
 //Generic output function for a usb port
 void usb_helpers_print_port(struct usb_port *port, const char *type);
@@ -61,7 +68,7 @@ void usb_helpers_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t forced);
 
 //Writes the path of port to output buffer, length is store in output_len
 void usb_helpers_convert_path_char(struct usb_port *port, char *output,
-                                   uint8_t* output_len);
+                                   uint8_t* output_len, uint8_t path_idx);
 
 //Converts path_str to a path-array. Returns 0 on success, 1 on failure
 uint8_t usb_helpers_convert_char_to_path(char *path_str, uint8_t *path,

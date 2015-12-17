@@ -130,6 +130,7 @@ static void generic_configure_hub(struct usb_monitor_ctx *ctx,
                                    struct generic_hub *ghub)
 {
     uint8_t hub_path[USB_PATH_MAX];
+    const char *hub_path_ptr = (const char *) hub_path;
     int32_t num_port_numbers, i = 0;
     struct generic_port *gport = (struct generic_port*) (ghub + 1);
 
@@ -146,7 +147,8 @@ static void generic_configure_hub(struct usb_monitor_ctx *ctx,
         gport->timeout = generic_timeout_port;
 
         usb_helpers_configure_port((struct usb_port*) gport,
-                                  ctx, hub_path, num_port_numbers + 2, i + 1,
+                                  ctx, hub_path_ptr,
+                                  num_port_numbers + 2, i + 1,
                                   (struct usb_hub*) ghub);
 
         gport = gport + 1;
@@ -227,6 +229,7 @@ static void generic_del_device(libusb_context *ctx, libusb_device *device,
     libusb_unref_device(ghub->hub_dev);
 
     while (i < ghub->num_ports) {
+        usb_helpers_release_port((struct usb_port*) gport);
         usb_monitor_lists_del_port((struct usb_port*) gport);
         gport = gport + 1;
         ++i;

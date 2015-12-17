@@ -28,6 +28,7 @@
 #include "http_utility.h"
 #include "socket_utility.h"
 #include "usb_monitor_lists.h"
+#include "usb_monitor.h"
 
 static void usb_monitor_client_send_code(struct http_client *client,
                                          uint16_t code)
@@ -43,13 +44,55 @@ static void usb_monitor_client_send_code(struct http_client *client,
     socket_utility_send(client->fd, (void*) hdr_buf, actual_hdr_len);
 }
 
+static uint8_t usb_monitor_client_add_paths_json(struct json_object *path_array,
+        struct usb_port *port, uint8_t path_idx)
+{
+    char path_buf[MAX_USB_PATH];
+    uint8_t path_buf_len = 0;
+    struct json_object *path = json_object_new_object(), *obj_add = NULL;
+
+    if (port == NULL)
+        return 1;
+
+    json_object_array_add(path_array, path);
+
+    //mode (IDLE, PING, RESET)
+    obj_add = json_object_new_int(port->msg_mode);
+    if (obj_add == NULL)
+        return 1;
+    else
+        json_object_object_add(path, "mode", obj_add);
+
+    //vid/pid
+    obj_add = json_object_new_int(port->u.vp.vid);
+    if (obj_add == NULL)
+        return 1;
+    else
+        json_object_object_add(path, "vid", obj_add);
+
+    obj_add = json_object_new_int(port->u.vp.pid);
+    if (obj_add == NULL)
+        return 1;
+    else
+        json_object_object_add(path, "pid", obj_add);
+
+    usb_helpers_convert_path_char(port, path_buf, &path_buf_len, path_idx);
+    obj_add = json_object_new_string_len(path_buf, path_buf_len);
+
+    if (obj_add == NULL)
+        return 1;
+    else
+        json_object_object_add(path, "path", obj_add);
+
+    return 0;
+}
+
 static json_object *usb_monitor_client_get_json(struct usb_monitor_ctx *ctx)
 {
     struct usb_port *itr;
-    char path_buf[MAX_USB_PATH];
-    uint8_t path_buf_len = 0;
+    uint8_t i = 0;
     struct json_object *json_ports = json_object_new_object();
-    struct json_object *ports_array, *port, *port_add;
+    struct json_object *ports_array;
 
     if (json_ports == NULL)
         return NULL;
@@ -71,45 +114,15 @@ static json_object *usb_monitor_client_get_json(struct usb_monitor_ctx *ctx)
         if (itr->status != PORT_DEV_CONNECTED)
             continue;
 
-        port = json_object_new_object();
+        for (i = 0; i < MAX_NUM_PATHS; i++) {
+            if (!itr->path[i])
+                break;
 
-        if (port == NULL)
-            break;
-
-        json_object_array_add(ports_array, port);
-
-        usb_helpers_convert_path_char(itr, path_buf, &path_buf_len);
-        port_add = json_object_new_string_len(path_buf, path_buf_len);
-        if (port_add == NULL)
-            break;
-        else
-            json_object_object_add(port, "path", port_add);
-
-        //mode (IDLE, PING, RESET)
-        port_add = json_object_new_int(itr->msg_mode);
-        if (port_add == NULL)
-            break;
-        else
-            json_object_object_add(port, "mode", port_add);
-
-        //vid/pid
-        port_add = json_object_new_int(itr->u.vp.vid);
-        if (port_add == NULL)
-            break;
-        else
-            json_object_object_add(port, "vid", port_add);
-
-        port_add = json_object_new_int(itr->u.vp.pid);
-        if (port_add == NULL)
-            break;
-        else
-            json_object_object_add(port, "pid", port_add);
-    }
-
-
-    if (itr != NULL) {
-        json_object_put(json_ports);
-        return NULL;
+            if (usb_monitor_client_add_paths_json(ports_array, itr, i)) {
+                json_object_put(json_ports);
+                return NULL;
+            }
+        }
     }
 
     return json_ports;

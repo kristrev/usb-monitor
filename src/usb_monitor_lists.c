@@ -31,6 +31,10 @@ void usb_monitor_lists_add_port(struct usb_monitor_ctx *ctx, struct usb_port *po
 
 void usb_monitor_lists_del_port(struct usb_port *port)
 {
+    if (port->port_next.le_next == NULL &&
+        port->port_next.le_prev == NULL)
+        return;
+
     LIST_REMOVE(port, port_next);
 
     //This is a work-around for an issue where a hub is removed while ports
@@ -54,19 +58,21 @@ struct usb_port *usb_monitor_lists_find_port_path(struct usb_monitor_ctx *ctx,
                                                   uint8_t *path,
                                                   uint8_t path_len)
 {
-    struct usb_port *itr;
+    uint8_t i;
+    struct usb_port *itr = NULL;
 
     LIST_FOREACH(itr, &(ctx->port_list), port_next) {
-        //Need to compare both length and content to avoid matching subset of
-        //paths
-        if ((itr->path_len != path_len) || 
-            (memcmp(itr->path, path, path_len)))
-            continue;
+        for (i = 0; i < MAX_NUM_PATHS; i++) {
+            if (!itr->path[i])
+                break;
 
-        break;
+            if ((itr->path_len[i] == path_len) &&
+                (!memcmp(itr->path[i], path, path_len)))
+                return itr;
+        }
     }
 
-    return itr;
+    return NULL;
 }
 
 void usb_monitor_lists_add_timeout(struct usb_monitor_ctx *ctx, struct usb_port *port)
@@ -94,6 +100,11 @@ void usb_monitor_lists_add_hub(struct usb_monitor_ctx *ctx, struct usb_hub *hub)
 
 void usb_monitor_lists_del_hub(struct usb_hub *hub)
 {
+
+    if (hub->hub_next.le_next == NULL &&
+        hub->hub_next.le_prev == NULL)
+        return;
+
     LIST_REMOVE(hub, hub_next);
     hub->hub_next.le_next = NULL;
     hub->hub_next.le_prev = NULL;

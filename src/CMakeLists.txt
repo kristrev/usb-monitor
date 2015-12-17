@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 2.6)
 project(usb-monitor)
 
-set(CMAKE_C_FLAGS "-O1 -Wall")
+set(CMAKE_C_FLAGS "-O1 -Wall -g")
 set(LIBS usb-1.0 json-c)
 
 set(CPACK_GENERATOR "DEB")

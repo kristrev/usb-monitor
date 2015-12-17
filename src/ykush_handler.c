@@ -155,6 +155,7 @@ static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
     uint8_t num_ports = usb_helpers_get_num_ports(ctx, yhub->hub_dev, 0x200);
     uint8_t i;
     uint8_t comm_path[USB_PATH_MAX];
+    const char *comm_path_ptr = (const char*) comm_path;
     int32_t num_port_numbers = 0, retval = 0;
 
     if (!num_ports)
@@ -209,12 +210,47 @@ static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
         yhub->port[i].output = ykush_print_port;
         yhub->port[i].update = ykush_update_port;
         yhub->port[i].timeout = ykush_handle_timeout;
-        usb_helpers_configure_port((struct usb_port*) &(yhub->port[i]),
-                                   ctx, comm_path, num_port_numbers + 1, i + 1,
-                                   (struct usb_hub*) yhub);
+        yhub->port[i].port_type = PORT_TYPE_YKUSH;
+
+
+        retval = usb_helpers_configure_port((struct usb_port*) &(yhub->port[i]),
+                                            ctx, comm_path_ptr,
+                                            num_port_numbers + 1, i + 1,
+                                            (struct usb_hub*) yhub);
+
+        if (retval)
+            break;
     }
 
-    return num_ports;
+    if (!retval)
+        return num_ports;
+    else
+        return 0;
+}
+
+static void ykush_release_memory(struct ykush_hub *yhub)
+{
+    uint8_t i = 0;
+
+    //According to documentation, comm_handle is only populated if open() is
+    //successfull
+    if (yhub->comm_handle) {
+        //According to documentation, safe to call also for non-claimed devices
+        libusb_release_interface(yhub->comm_handle, 0);
+        libusb_close(yhub->comm_handle);
+    }
+
+    //Always referenced before this function is called (see add_device)
+    libusb_unref_device(yhub->hub_dev);
+    libusb_unref_device(yhub->comm_dev);
+
+    for (i = 0; i < yhub->num_ports; i++) {
+        usb_helpers_release_port((struct usb_port*) &(yhub->port[i]));
+        usb_monitor_lists_del_port((struct usb_port*) &(yhub->port[i]));
+    }
+
+    usb_monitor_lists_del_hub((struct usb_hub*) yhub);
+    free(yhub);
 }
 
 static void ykush_add_device(libusb_context *ctx, libusb_device *device,
@@ -229,7 +265,7 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
     if (usb_monitor_lists_find_hub(usbmon_ctx, parent))
         return;
 
-    yhub = malloc(sizeof(struct ykush_hub));
+    yhub = calloc(sizeof(struct ykush_hub), 1);
 
     //TODO: Decide on error handling
     if (yhub == NULL) {
@@ -247,13 +283,12 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
 
     //TODO: Check error code
     if (!ykush_configure_hub(usbmon_ctx, yhub)) {
-        libusb_unref_device(yhub->hub_dev);
-        libusb_unref_device(yhub->comm_dev);
-        free(yhub);
-    } else {
-        usb_monitor_lists_add_hub(usbmon_ctx, (struct usb_hub*) yhub);
+        USB_DEBUG_PRINT(usbmon_ctx->logfile, "YKUSH hub configuration failed\n");
+        ykush_release_memory(yhub);
+        return;
     }
-
+    
+    usb_monitor_lists_add_hub(usbmon_ctx, (struct usb_hub*) yhub);
     USB_DEBUG_PRINT(usbmon_ctx->logfile, "Added new YKUSH hub. Num. ports %u\n", yhub->num_ports);
 }
 
@@ -264,7 +299,6 @@ static void ykush_del_device(libusb_context *ctx, libusb_device *device,
     struct libusb_device *parent = libusb_get_parent(device);
     struct ykush_hub *yhub = (struct ykush_hub*)
                              usb_monitor_lists_find_hub(usbmon_ctx, parent);
-    uint8_t i;
 
     if (yhub == NULL) {
         USB_DEBUG_PRINT(usbmon_ctx->logfile, "Hub not on list\n");
@@ -272,17 +306,7 @@ static void ykush_del_device(libusb_context *ctx, libusb_device *device,
     }
 
     USB_DEBUG_PRINT(usbmon_ctx->logfile, "Will remove YKUSH hub\n");
-
-    libusb_release_interface(yhub->comm_handle, 0);
-    libusb_close(yhub->comm_handle);
-    libusb_unref_device(yhub->hub_dev);
-    libusb_unref_device(yhub->comm_dev);
-
-    for (i = 0; i < yhub->num_ports; i++)
-        usb_monitor_lists_del_port((struct usb_port*) &(yhub->port[i]));
-
-    usb_monitor_lists_del_hub((struct usb_hub*) yhub);
-    free(yhub);
+    ykush_release_memory(yhub);
 }
 
 int ykush_event_cb(libusb_context *ctx, libusb_device *device,
