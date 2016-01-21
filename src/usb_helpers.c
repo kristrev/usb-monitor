@@ -68,6 +68,9 @@ void usb_helpers_print_port(struct usb_port *port, const char *type)
 {
     int i, j;
     struct libusb_device_descriptor desc;
+    //TODO: This is too big, select a sane maximum when time
+    char path_buf[255] = {0};
+    uint8_t path_progress = 0;
 
     //Generic hubs often advertise a much larger number of ports than they
     //provide. In order to avoid polluting the lists, only print ports that has
@@ -75,34 +78,34 @@ void usb_helpers_print_port(struct usb_port *port, const char *type)
     /*if (port->status != PORT_DEV_CONNECTED)
         return;*/
 
-    USB_DEBUG_PRINT(port->ctx->logfile, "Type: %s Path: ", type);
-
     for (j = 0; j < MAX_NUM_PATHS; j++) {
         if (port->path[j] == NULL)
             break;
 
         if (j)
-            fprintf(port->ctx->logfile, "/");
+            path_progress += sprintf(path_buf + path_progress, "/");
 
         for (i = 0; i < port->path_len[j]; i++) {
             if (i != (port->path_len[j] - 1))
-                fprintf(port->ctx->logfile, "%u-", port->path[j][i]);
+                path_progress += sprintf(path_buf + path_progress, "%u-",
+                        port->path[j][i]);
             else
-                fprintf(port->ctx->logfile, "%u", port->path[j][i]);
+                path_progress += sprintf(path_buf + path_progress, "%u",
+                        port->path[j][i]);
         }
     }
 
-    fprintf(port->ctx->logfile, " State: %u Pwr: %u ", port->status,
-            port->pwr_state);
-
     if (port->dev) {
         libusb_get_device_descriptor(port->dev, &desc);
-        fprintf(port->ctx->logfile, " Device: %.4x:%.4x", desc.idVendor,
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO,
+                "Type %s Path: %s State %u Pwr: %u Device: %.4x:%.4x\n",
+                type, path_buf, port->status, port->pwr_state, desc.idVendor,
                 desc.idProduct);
+    } else {
+         USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO,
+                "Type %s Path: %s State %u Pwr: %u\n",
+                type, path_buf, port->status, port->pwr_state);
     }
-
-    fprintf(port->ctx->logfile, "\n");
-    fflush(port->ctx->logfile);
 }
 
 int8_t usb_helpers_get_power_switch(struct usb_monitor_ctx *ctx,
@@ -117,7 +120,7 @@ int8_t usb_helpers_get_power_switch(struct usb_monitor_ctx *ctx,
     memset(&hubd, 0, sizeof(hubd));
 
     if (libusb_open(hub_device, &hub_handle)) {
-        USB_DEBUG_PRINT(ctx->logfile, "Could not create USB handle\n");
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR, "Could not create USB handle\n");
         return 0;
     }
 
@@ -157,7 +160,7 @@ uint8_t usb_helpers_get_num_ports(struct usb_monitor_ctx *ctx,
     memset(&hubd, 0, sizeof(hubd));
 
     if (libusb_open(hub_device, &hub_handle)) {
-        USB_DEBUG_PRINT(ctx->logfile, "Could not create USB handle\n");
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR, "Could not create USB handle\n");
         return 0;
     }
 
@@ -179,7 +182,8 @@ uint8_t usb_helpers_get_num_ports(struct usb_monitor_ctx *ctx,
     libusb_close(hub_handle);
 
     if (retval < 0) {
-        USB_DEBUG_PRINT(ctx->logfile, "Failed to read hub descriptor. Error: %s\n",
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR,
+                "Failed to read hub descriptor. Error: %s\n",
                 libusb_error_name(retval));
         return 0;
     } else {
@@ -202,7 +206,8 @@ void usb_helpers_reset_port(struct usb_port *port)
 
     if (port->status == PORT_DEV_CONNECTED) {
         libusb_get_device_descriptor(port->dev, &desc);
-        USB_DEBUG_PRINT(port->ctx->logfile, "Device: %.4x:%.4x removed\n", desc.idVendor, desc.idProduct);
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO,
+                "Device: %.4x:%.4x removed\n", desc.idVendor, desc.idProduct);
 
         if (port->dev_handle)
             libusb_close(port->dev_handle);
@@ -241,7 +246,8 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
         return;
 
     if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
-        USB_DEBUG_PRINT(port->ctx->logfile, "Ping failed for %.4x:%.4x\n",
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_ERR,
+                "Ping failed for %.4x:%.4x\n",
                 port->u.vp.vid, port->u.vp.pid);
         port->num_retrans++;
 
@@ -253,7 +259,8 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
         }
     } else {
         if (++port->ping_cnt == PING_OUTPUT) {
-            USB_DEBUG_PRINT(port->ctx->logfile, "Ping success for %.4x:%.4x\n",
+            USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO,
+                    "Ping success for %.4x:%.4x\n",
                     port->u.vp.vid, port->u.vp.pid);
             port->ping_cnt = 0;
         }
@@ -273,7 +280,9 @@ static int32_t usb_helpers_configure_handle(struct usb_port *port)
     retval = libusb_open(port->dev, &(port->dev_handle));
 
     if (retval) {
-        USB_DEBUG_PRINT(port->ctx->logfile, "Failed to open device, msg: %s, dev:\n", libusb_error_name(retval));
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_ERR,
+                "Failed to open device, msg: %s, dev:\n",
+                libusb_error_name(retval));
         port->output(port);
         //That we cant open device is an indication that something is wrong
         port->num_retrans++;
@@ -294,7 +303,8 @@ void usb_helpers_send_ping(struct usb_port *port)
     transfer = libusb_alloc_transfer(0);
 
     if (transfer == NULL) {
-        USB_DEBUG_PRINT(port->ctx->logfile, "Could not allocate transfer for:\n");
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_ERR,
+                "Could not allocate transfer for:\n");
         port->output(port);
         usb_helpers_start_timeout(port, DEFAULT_TIMEOUT_SEC);
         return;
@@ -319,7 +329,8 @@ void usb_helpers_send_ping(struct usb_port *port)
                                  5000);
 
     if (libusb_submit_transfer(transfer)) {
-        USB_DEBUG_PRINT(port->ctx->logfile, "Failed to submit transfer\n");
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_ERR,
+                "Failed to submit transfer\n");
         libusb_free_transfer(transfer);
         libusb_release_interface(port->dev_handle, 0);
         libusb_close(port->dev_handle);
@@ -340,7 +351,7 @@ void usb_helpers_check_devices(struct usb_monitor_ctx *ctx)
     cnt = libusb_get_device_list(NULL, &list);
 
     if (cnt < 0) {
-        USB_DEBUG_PRINT(ctx->logfile, "Failed to get device list\n");
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR, "Failed to get device list\n");
         //This function is also called from timeout, so if we ever fail to get
         //list, we will just try again later
         return;
@@ -391,7 +402,8 @@ static uint8_t usb_helpers_check_bad_id(struct usb_monitor_ctx *ctx, struct usb_
 
     for (i = 0; i < num_bad_ids; i++) {
         if (port->u.vp_long.vidpid == usb_helpers_bad_ids[i]) {
-            USB_DEBUG_PRINT(ctx->logfile, "Will restart due to bad ID %x\n",
+            USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
+                    "Will restart due to bad ID %x\n",
                     port->u.vp_long.vidpid);
             return 1;
         }

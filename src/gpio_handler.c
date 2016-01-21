@@ -63,7 +63,7 @@ static void gpio_update_port(struct usb_port *port)
     fd = open(file_path, O_WRONLY | FD_CLOEXEC);
 
     if (fd == -1) {
-        USB_DEBUG_PRINT(port->ctx->logfile, "Failed to open gpio file\n");
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_ERR, "Failed to open gpio file\n");
         usb_helpers_start_timeout((struct usb_port*) gport, DEFAULT_TIMEOUT_SEC);
         return;
     }
@@ -232,7 +232,7 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
                 return 1;
             }
 
-            USB_DEBUG_PRINT(ctx->logfile, "Read following GPIO from config %s (%u)\n", path_org, gpio_num);
+            USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Read following GPIO from config %s (%u)\n", path_org, gpio_num);
             free(path);
 
         }

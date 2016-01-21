@@ -202,7 +202,7 @@ static uint8_t usb_monitor_client_restart_ports(struct usb_monitor_ctx *ctx,
         if (port_ptr->msg_mode == RESET)
             continue;
 
-        USB_DEBUG_PRINT(ctx->logfile, "Requested to restart:\n");
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Requested to restart:\n");
         port_ptr->output(port_ptr);
 
         if (port_ptr->msg_mode != RESET)
