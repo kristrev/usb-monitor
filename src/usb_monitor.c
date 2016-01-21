@@ -171,7 +171,7 @@ static uint8_t usb_monitor_parse_config(struct usb_monitor_ctx *ctx,
 
 static void usb_monitor_signal_handler(int signum)
 {
-    USB_DEBUG_PRINT(usbmon_ctx->logfile, "Signalled to restart all ports\n");
+    USB_DEBUG_PRINT_SYSLOG(usbmon_ctx, LOG_INFO, "Signalled to restart all ports\n");
     usb_helpers_reset_all_ports(usbmon_ctx, 1);
 }
 
@@ -252,7 +252,7 @@ static void usb_monitor_accept_cb(void *ptr, int32_t fd, uint32_t events)
         client = malloc(sizeof(struct http_client));
 
         if (client == NULL) {
-            USB_DEBUG_PRINT(ctx->logfile, "Could not allocate memory for client\n");
+            USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Could not allocate memory for client\n");
             return;
         } else {
             ctx->clients[client_idx] = client;
@@ -265,8 +265,8 @@ static void usb_monitor_accept_cb(void *ptr, int32_t fd, uint32_t events)
 
     //Start off by only supporting one concurrent client
     usb_monitor_configure_client(ctx, client, client_sock, client_idx);
-    USB_DEBUG_PRINT(ctx->logfile, "Accepted new client with index: %u\n",
-                    client_idx);
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, 
+            "Accepted new client with index: %u\n", client_idx);
 }
 
 static int usb_monitor_configure_unix_socket(struct usb_monitor_ctx *ctx)
@@ -389,6 +389,7 @@ static void usb_monitor_print_usage()
     fprintf(stdout, "\t-c : path to config file (optional)\n");
     fprintf(stdout, "\t-g : group id of usb monitor socket (optional)\n");
     fprintf(stdout, "\t-d : run as daemon\n");
+    fprintf(stdout, "\t-s : write to syslog\n");
     fprintf(stdout, "\t-h : this output\n");
 }
 
@@ -412,7 +413,7 @@ int main(int argc, char *argv[])
 
     memset(&sig_handler, 0, sizeof(sig_handler));
 
-    usbmon_ctx = malloc(sizeof(struct usb_monitor_ctx));
+    usbmon_ctx = calloc(sizeof(struct usb_monitor_ctx), 1);
 
     if (usbmon_ctx == NULL) {
         fprintf(stderr, "Failed to allocated application context struct\n");
@@ -420,9 +421,8 @@ int main(int argc, char *argv[])
     }
 
     usbmon_ctx->logfile = stderr;
-    usbmon_ctx->group_id = 0;
 
-    while ((retval = getopt(argc, argv, "o:c:g:dh")) != -1) {
+    while ((retval = getopt(argc, argv, "o:c:g:dhs")) != -1) {
         switch (retval) {
         case 'o':
             usbmon_ctx->logfile = fopen(optarg, "a+");
@@ -432,6 +432,9 @@ int main(int argc, char *argv[])
             break;
         case 'd':
             daemonize = 1;
+            break;
+        case 's':
+            usbmon_ctx->use_syslog = 1;
             break;
         case 'g':
             usbmon_ctx->group_id = atoi(optarg);
@@ -454,6 +457,9 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Failed to create logfile\n");
         exit(EXIT_FAILURE);
     }
+
+    if (usbmon_ctx->use_syslog)
+        openlog("usb-monitor", LOG_PID | LOG_NDELAY, LOG_DAEMON); 
 
     retval = libusb_init(NULL);
 
@@ -484,7 +490,8 @@ int main(int argc, char *argv[])
 
     usb_helpers_check_devices(usbmon_ctx);
 
-    USB_DEBUG_PRINT(usbmon_ctx->logfile, "Initial state:\n");
+    USB_DEBUG_PRINT_SYSLOG(usbmon_ctx, LOG_INFO, "Initial state:\n");
+
     usb_monitor_print_ports(usbmon_ctx);
 
     usb_monitor_start_event_loop(usbmon_ctx);

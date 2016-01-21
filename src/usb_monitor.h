@@ -125,7 +125,6 @@ struct usb_monitor_ctx {
     struct backend_epoll_handle *libusb_handle;
     struct backend_epoll_handle *accept_handle;
     struct http_client *clients[MAX_HTTP_CLIENTS];
-    uint8_t clients_map;
     struct timeval last_restart;
     struct timeval last_dev_check;
     FILE* logfile;
@@ -133,6 +132,8 @@ struct usb_monitor_ctx {
     LIST_HEAD(ports, usb_port) port_list;
     struct ports timeout_list;
     gid_t group_id;
+    uint8_t clients_map;
+    uint8_t use_syslog;
 };
 
 //Output all of the ports, move to helpers?

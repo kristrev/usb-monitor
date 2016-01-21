@@ -41,7 +41,8 @@ static void ykush_reset_cb(struct libusb_transfer *transfer)
     struct ykush_port *yport = transfer->user_data;
 
     if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
-        USB_DEBUG_PRINT(yport->ctx->logfile, "Failed to flip %u (%.4x:%.4x)\n",
+        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR,
+                "Failed to flip %u (%.4x:%.4x)\n",
                 yport->port_num, yport->u.vp.vid, yport->u.vp.pid);
         //Set to IDLE in case of transfer error, we will then retry up/down on
         //next timeout (or on user request)
@@ -56,7 +57,6 @@ static void ykush_reset_cb(struct libusb_transfer *transfer)
         //msg_state to PING again. Device is disconnected, so it will be
         //connected again and we will set flag there
         if (yport->pwr_state == POWER_ON) {
-            //USB_DEBUG_PRINT(yport->ctx->logfile, "YKUSH port %u is switched on again\n", yport->port_num);
             yport->msg_mode = IDLE;
         } else {
             usb_helpers_start_timeout((struct usb_port*) yport, DEFAULT_TIMEOUT_SEC);
@@ -82,11 +82,8 @@ static void ykush_update_port(struct usb_port *port)
     //list, since it does not make sense to try to send ping while resetting
     //device.
     if (yport->timeout_next.le_next != NULL ||
-        yport->timeout_next.le_prev != NULL) {
-            //USB_DEBUG_PRINT(yport->ctx->logfile, "Will delete:\n");
-            //ykush_print_port((struct usb_port*) yport);
+        yport->timeout_next.le_prev != NULL)
             usb_monitor_lists_del_timeout((struct usb_port*) yport);
-    }
 
     switch (yport->port_num) {
     case 1:
@@ -99,7 +96,7 @@ static void ykush_update_port(struct usb_port *port)
         port_cmd = YKUSH_CMD_PORT_3;
         break;
     default:
-        USB_DEBUG_PRINT(yport->ctx->logfile, "Unknown port, aborting\n");
+        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR, "Unknown port, aborting\n");
         return;
     }
 
@@ -114,7 +111,8 @@ static void ykush_update_port(struct usb_port *port)
     transfer = libusb_alloc_transfer(0);
 
     if (transfer == NULL) {
-        USB_DEBUG_PRINT(yport->ctx->logfile, "Could not allocate trasnfer\n");
+        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR,
+                "Could not allocate trasnfer\n");
         usb_helpers_start_timeout(port, DEFAULT_TIMEOUT_SEC);
         return;
     }
@@ -133,7 +131,8 @@ static void ykush_update_port(struct usb_port *port)
                                    5000);
 
     if (libusb_submit_transfer(transfer)) {
-        USB_DEBUG_PRINT(yport->ctx->logfile, "Failed to submit transfer\n");
+        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR,
+                "Failed to submit transfer\n");
         libusb_free_transfer(transfer);
         usb_helpers_start_timeout(port, DEFAULT_TIMEOUT_SEC);
         return;
@@ -165,35 +164,39 @@ static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
     num_ports -= 1;
 
     if (num_ports != MAX_YKUSH_PORTS) {
-        USB_DEBUG_PRINT(ctx->logfile, "YKUSH hub with odd number of ports %u\n", num_ports);
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR, "YKUSH hub with odd number of ports %u\n", num_ports);
         return 0;
     }
 
     //Set up com device
     retval = libusb_open(yhub->comm_dev, &(yhub->comm_handle));
     if (retval) {
-        USB_DEBUG_PRINT(ctx->logfile, "Open failed: %s\n", libusb_error_name(retval));
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR,
+                "Open failed: %s\n", libusb_error_name(retval));
         return 0;
     }
 
     retval = libusb_detach_kernel_driver(yhub->comm_handle, 0);
     //This error is not critical, it just means that there was no driver
     if (retval && retval != LIBUSB_ERROR_NOT_FOUND) {
-        USB_DEBUG_PRINT(ctx->logfile, "Detatch failed: %s\n", libusb_error_name(retval));
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR, "Detatch failed: %s\n",
+                libusb_error_name(retval));
         libusb_close(yhub->comm_handle);
         return 0;
     }
 
     retval = libusb_set_configuration(yhub->comm_handle, 1);
     if (retval) {
-        USB_DEBUG_PRINT(ctx->logfile, "Config failed: %s\n", libusb_error_name(retval));
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR, "Config failed: %s\n",
+                libusb_error_name(retval));
         libusb_close(yhub->comm_handle);
         return 0;
     }
 
     retval = libusb_claim_interface(yhub->comm_handle, 0);
     if (retval) {
-        USB_DEBUG_PRINT(ctx->logfile, "Claim failed: %s\n", libusb_error_name(retval));
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR, "Claim failed: %s\n",
+                libusb_error_name(retval));
         libusb_close(yhub->comm_handle);
         return 0;
     }
@@ -269,7 +272,8 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
 
     //TODO: Decide on error handling
     if (yhub == NULL) {
-        USB_DEBUG_PRINT(usbmon_ctx->logfile, "Failed to allocate memory for YKUSH hub\n");
+        USB_DEBUG_PRINT_SYSLOG(usbmon_ctx, LOG_ERR,
+                "Failed to allocate memory for YKUSH hub\n");
         return;
     }
 
@@ -283,13 +287,15 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
 
     //TODO: Check error code
     if (!ykush_configure_hub(usbmon_ctx, yhub)) {
-        USB_DEBUG_PRINT(usbmon_ctx->logfile, "YKUSH hub configuration failed\n");
+        USB_DEBUG_PRINT_SYSLOG(usbmon_ctx, LOG_ERR,
+                "YKUSH hub configuration failed\n");
         ykush_release_memory(yhub);
         return;
     }
     
     usb_monitor_lists_add_hub(usbmon_ctx, (struct usb_hub*) yhub);
-    USB_DEBUG_PRINT(usbmon_ctx->logfile, "Added new YKUSH hub. Num. ports %u\n", yhub->num_ports);
+    USB_DEBUG_PRINT_SYSLOG(usbmon_ctx, LOG_INFO,
+            "Added new YKUSH hub. Num. ports %u\n", yhub->num_ports);
 }
 
 static void ykush_del_device(libusb_context *ctx, libusb_device *device,
@@ -301,11 +307,11 @@ static void ykush_del_device(libusb_context *ctx, libusb_device *device,
                              usb_monitor_lists_find_hub(usbmon_ctx, parent);
 
     if (yhub == NULL) {
-        USB_DEBUG_PRINT(usbmon_ctx->logfile, "Hub not on list\n");
+        USB_DEBUG_PRINT_SYSLOG(usbmon_ctx, LOG_INFO, "Hub not on list\n");
         return;
     }
 
-    USB_DEBUG_PRINT(usbmon_ctx->logfile, "Will remove YKUSH hub\n");
+    USB_DEBUG_PRINT_SYSLOG(usbmon_ctx, LOG_INFO, "Will remove YKUSH hub\n");
     ykush_release_memory(yhub);
 }
 

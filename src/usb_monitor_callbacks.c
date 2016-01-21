@@ -54,7 +54,8 @@ static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     if (port->dev && port->dev == dev)
         return;
 
-    USB_DEBUG_PRINT(ctx->logfile, "Device: %.4x:%.4x added\n", desc.idVendor, desc.idProduct);
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
+            "Device: %.4x:%.4x added\n", desc.idVendor, desc.idProduct);
 
     //We need to configure port. So far, this is all generic
     port->u.vp.vid = desc.idVendor;
