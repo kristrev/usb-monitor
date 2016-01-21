@@ -490,7 +490,7 @@ int main(int argc, char *argv[])
 
     usb_helpers_check_devices(usbmon_ctx);
 
-    USB_DEBUG_PRINT(usbmon_ctx->logfile, "Initial state:\n");
+    USB_DEBUG_PRINT_SYSLOG(usbmon_ctx, LOG_INFO, "Initial state:\n");
 
     usb_monitor_print_ports(usbmon_ctx);
 
