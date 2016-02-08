@@ -11,8 +11,7 @@
 uint8_t usb_helpers_configure_port(struct usb_port *port,
                                    struct usb_monitor_ctx *ctx,
                                    const char *path, uint8_t path_len,
-                                   uint8_t port_num, struct usb_hub *parent,
-                                   uint8_t enabled)
+                                   uint8_t port_num, struct usb_hub *parent)
 {
         port->path[0] = strndup(path, path_len);
 
@@ -24,7 +23,7 @@ uint8_t usb_helpers_configure_port(struct usb_port *port,
         port->pwr_state = POWER_ON;
         port->ctx = ctx;
         port->parent = parent;
-        port->enabled = enabled;
+        port->enabled = 1;
 
         usb_monitor_lists_add_port(ctx, port);
 

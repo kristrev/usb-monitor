@@ -64,28 +64,36 @@ static ssize_t gpio_write_value(struct gpio_port *gport, uint8_t gpio_val)
     return bytes_written;
 }
 
-static void gpio_update_port(struct usb_port *port, uint8_t cmd)
+static int32_t gpio_update_port(struct usb_port *port, uint8_t cmd)
 {
     struct gpio_port *gport = (struct gpio_port*) port;
     uint8_t gpio_val = 0;
 
-    //TODO: Remember return values
     if (cmd == CMD_ENABLE) {
-        gpio_write_value(gport, 1);
+        if (gpio_write_value(gport, 1) <= 0)
+            return -1;
+
         gport->enabled = 1;
-        return;
+        gport->pwr_state = 1;
+        return 0;
     } else if (cmd == CMD_DISABLE) {
         //No need to any special clean-up, device will be removed and then we
         //let those functions take care of stopping timeouts etc.
-        gpio_write_value(gport, 0);
+        if (gpio_write_value(gport, 0) <= 0)
+            return -1;
+
         gport->enabled = 0;
-        return;
+        gport->pwr_state = 0;
+        //Set msg_mode to IDLE in case we interrupt a RESET. This way we make
+        //sure that we can, in worst case, recover using timeout
+        gport->msg_mode = IDLE;
+        return 0;
     }
 
     //Consider returning an error here, will happen if we ever to reset a
     //disabled port
     if (!gport->enabled)
-        return;
+        return 0;
 
     gport->msg_mode = RESET;
 
@@ -106,7 +114,7 @@ static void gpio_update_port(struct usb_port *port, uint8_t cmd)
         USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_ERR, "Failed to write to gpio\n");
         usb_helpers_start_timeout((struct usb_port*) gport,
                 DEFAULT_TIMEOUT_SEC);
-        return;
+        return -1;
     }
 
     gport->pwr_state = !gport->pwr_state;
@@ -115,10 +123,11 @@ static void gpio_update_port(struct usb_port *port, uint8_t cmd)
     //to set IDLE here since there will be no device seen connected to port yet
     if (gport->pwr_state) {
         gport->msg_mode = IDLE;
-        return;
+        return 0;
     }
 
     usb_helpers_start_timeout((struct usb_port*) gport, GPIO_TIMEOUT_SLEEP_SEC);
+    return 0;
 }
 
 static void gpio_handle_timeout(struct usb_port *port)
@@ -170,7 +179,7 @@ static struct gpio_port* gpio_handler_create_port(struct usb_monitor_ctx *ctx,
 }
 
 static uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx,
-        char *path, uint8_t gpio_num, uint8_t enabled)
+        char *path, uint8_t gpio_num)
 {
     struct gpio_port *port;
 
@@ -200,7 +209,7 @@ static uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx,
     //Update path
     if (do_configure)
         retval = usb_helpers_configure_port((struct usb_port *) port,
-                ctx, dev_path_ptr, path_len, gpio_num, NULL, enabled);
+                ctx, dev_path_ptr, path_len, gpio_num, NULL);
     else
         retval = usb_helpers_port_add_path((struct usb_port *) port,
                 dev_path_ptr, path_len);
@@ -223,7 +232,7 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
     char *path;
     const char *path_org;
     int i, j;
-    uint8_t gpio_num = -1, unknown = 0, enabled = 1;
+    uint8_t gpio_num = -1, unknown = 0;
 
     for (i = 0; i < json_arr_len; i++) {
         json_port = json_object_array_get_idx(json, i); 
@@ -234,9 +243,6 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
                 continue;
             } else if (!strcmp(key, "gpio_num") && json_object_is_type(val, json_type_int)) {
                 gpio_num = (uint8_t) json_object_get_int(val);
-                continue;
-            } else if (!strcmp(key, "enabled") && json_object_is_type(val, json_type_int)) {
-                enabled = (uint8_t) json_object_get_int(val);
                 continue;
             } else {
                 unknown = 1;
@@ -256,7 +262,7 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
             if (!path)
                 return 1;
 
-            if (gpio_handler_add_port(ctx, path, gpio_num, enabled)) {
+            if (gpio_handler_add_port(ctx, path, gpio_num)) {
                 free(path);
                 return 1;
             }

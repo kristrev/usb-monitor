@@ -49,32 +49,32 @@ static uint8_t usb_monitor_client_add_paths_json(struct json_object *path_array,
 {
     char path_buf[MAX_USB_PATH];
     uint8_t path_buf_len = 0;
-    struct json_object *path = json_object_new_object(), *obj_add = NULL;
+    struct json_object *port_info = json_object_new_object(), *obj_add = NULL;
 
-    if (port == NULL)
+    if (port_info == NULL)
         return 1;
 
-    json_object_array_add(path_array, path);
+    json_object_array_add(path_array, port_info);
 
     //mode (IDLE, PING, RESET)
     obj_add = json_object_new_int(port->msg_mode);
     if (obj_add == NULL)
         return 1;
     else
-        json_object_object_add(path, "mode", obj_add);
+        json_object_object_add(port_info, "mode", obj_add);
 
     //vid/pid
     obj_add = json_object_new_int(port->u.vp.vid);
     if (obj_add == NULL)
         return 1;
     else
-        json_object_object_add(path, "vid", obj_add);
+        json_object_object_add(port_info, "vid", obj_add);
 
     obj_add = json_object_new_int(port->u.vp.pid);
     if (obj_add == NULL)
         return 1;
     else
-        json_object_object_add(path, "pid", obj_add);
+        json_object_object_add(port_info, "pid", obj_add);
 
     usb_helpers_convert_path_char(port, path_buf, &path_buf_len, path_idx);
     obj_add = json_object_new_string_len(path_buf, path_buf_len);
@@ -82,7 +82,14 @@ static uint8_t usb_monitor_client_add_paths_json(struct json_object *path_array,
     if (obj_add == NULL)
         return 1;
     else
-        json_object_object_add(path, "path", obj_add);
+        json_object_object_add(port_info, "path", obj_add);
+
+    obj_add = json_object_new_int(port->enabled);
+
+    if (obj_add == NULL)
+        return 1;
+    else
+        json_object_object_add(port_info, "enabled", obj_add);
 
     return 0;
 }
@@ -109,11 +116,6 @@ static json_object *usb_monitor_client_get_json(struct usb_monitor_ctx *ctx)
     json_object_object_add(json_ports, "ports", ports_array);
 
     LIST_FOREACH(itr, &(ctx->port_list), port_next) {
-        //Only return ports that have devices connected. Other ports will be
-        //reset by usb_monitor, so no need to for input
-        if (itr->status != PORT_DEV_CONNECTED)
-            continue;
-
         for (i = 0; i < MAX_NUM_PATHS; i++) {
             if (!itr->path[i])
                 break;
@@ -153,7 +155,7 @@ static void usb_monitor_client_handle_get(struct http_client *client)
     json_object_put(json_ports);
 }
 
-static uint8_t usb_monitor_client_restart_ports(struct usb_monitor_ctx *ctx,
+static uint8_t usb_monitor_client_update_ports(struct usb_monitor_ctx *ctx,
                                                 struct json_object *ports)
 {
     struct json_object *port;
@@ -198,6 +200,10 @@ static uint8_t usb_monitor_client_restart_ports(struct usb_monitor_ctx *ctx,
         if (port_ptr == NULL)
             continue;
 
+        if ((cmd == CMD_ENABLE && port_ptr->enabled) ||
+            (cmd == CMD_DISABLE && !port_ptr->enabled))
+            return 0;
+
         if (cmd == CMD_RESTART) {
             //If a device is being reset, do nothing. This is OK, there is no point
             //queueing up reset requests
@@ -214,7 +220,7 @@ static uint8_t usb_monitor_client_restart_ports(struct usb_monitor_ctx *ctx,
         port_ptr->output(port_ptr);
 
         //TODO: Update failure based on return value from update-function
-        port_ptr->update(port_ptr, cmd);
+        failure = port_ptr->update(port_ptr, cmd);
 
     }
 
@@ -243,10 +249,7 @@ static void usb_monitor_client_handle_post(struct http_client *client)
     }
 
     json_object_object_foreach(json_obj, key, val) {
-        if (strcmp(key, "ports")) {
-            ports = NULL;
-            break;
-        } else {
+        if (!strcmp(key, "ports")) {
             ports = val;
             break;
         }
@@ -264,7 +267,7 @@ static void usb_monitor_client_handle_post(struct http_client *client)
         return;
     }
 
-    retval = usb_monitor_client_restart_ports(client->ctx, ports);
+    retval = usb_monitor_client_update_ports(client->ctx, ports);
     json_object_put(json_obj); 
 
     if (retval) {

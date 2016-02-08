@@ -41,7 +41,7 @@ struct http_client;
 
 //port function pointers
 typedef void (*print_port)(struct usb_port *port);
-typedef void (*update_port)(struct usb_port *port, uint8_t cmd);
+typedef int32_t (*update_port)(struct usb_port *port, uint8_t cmd);
 typedef void (*handle_timeout)(struct usb_port *port);
 
 enum {

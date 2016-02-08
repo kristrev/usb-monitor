@@ -28,7 +28,7 @@
 #include "usb_monitor_lists.h"
 #include "usb_logging.h"
 
-static void ykush_update_port(struct usb_port *port, uint8_t cmd);
+static int32_t ykush_update_port(struct usb_port *port, uint8_t cmd);
 
 /* TODO: Parts of this function is generic, split in two */
 static void ykush_print_port(struct usb_port *port)
@@ -36,9 +36,47 @@ static void ykush_print_port(struct usb_port *port)
     usb_helpers_print_port(port, "YKUSH");
 }
 
+static void ykush_enable_cb(struct libusb_transfer *transfer)
+{
+    struct ykush_port *yport = transfer->user_data;
+
+    if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
+        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR,
+                "Failed to enable %u (%.4x:%.4x)\n",
+                yport->port_num, yport->u.vp.vid, yport->u.vp.pid);
+        return;
+    }
+
+    yport->enabled = 1;
+    yport->pwr_state = 1;
+}
+
+static void ykush_disable_cb(struct libusb_transfer *transfer)
+{
+    struct ykush_port *yport = transfer->user_data;
+
+    if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
+        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR,
+                "Failed to disable %u (%.4x:%.4x)\n",
+                yport->port_num, yport->u.vp.vid, yport->u.vp.pid);
+        return;
+    }
+
+    yport->enabled = 0;
+    yport->msg_mode = IDLE;
+    yport->pwr_state = 0;
+}
+
 static void ykush_reset_cb(struct libusb_transfer *transfer)
 {
     struct ykush_port *yport = transfer->user_data;
+
+    //This block is needed for several reasons. First of all, there is no point
+    //in continuing with reset if port is disabled. Second, it prevents the
+    //reset code from running in case of the following chain of events: disable
+    //(async), reset, disable callback, rest callback
+    if (!yport->enabled)
+        return;
 
     if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
         USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR,
@@ -56,20 +94,90 @@ static void ykush_reset_cb(struct libusb_transfer *transfer)
         //can never interrupt a reset "call". There is no poing setting
         //msg_state to PING again. Device is disconnected, so it will be
         //connected again and we will set flag there
-        if (yport->pwr_state == POWER_ON) {
+        if (yport->pwr_state == POWER_ON)
             yport->msg_mode = IDLE;
-        } else {
+        else
             usb_helpers_start_timeout((struct usb_port*) yport, DEFAULT_TIMEOUT_SEC);
-        }
     }
 }
 
-static void ykush_update_port(struct usb_port *port, uint8_t cmd)
+static int32_t ykush_perform_transfer(struct ykush_port *yport,
+        struct ykush_hub * yhub, uint8_t port_cmd,libusb_transfer_cb_fn cb)
+{
+    struct libusb_transfer *transfer;
+    int32_t retval = 0;
+
+    yport->buf[0] = yport->buf[1] = port_cmd;
+
+    //Follow the steps of the libusb async manual
+    transfer = libusb_alloc_transfer(0);
+
+    if (transfer == NULL) {
+        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR,
+                "Could not allocate trasnfer\n");
+        return -1;
+    }
+
+    //Use flags to save us from adding som basic logic
+    transfer->flags = LIBUSB_TRANSFER_SHORT_NOT_OK |
+                      LIBUSB_TRANSFER_FREE_TRANSFER;
+
+    libusb_fill_interrupt_transfer(transfer,
+                                   yhub->comm_handle,
+                                   0x01,
+                                   yport->buf,
+                                   sizeof(yport->buf),
+                                   cb,
+                                   yport,
+                                   5000);
+
+    retval = libusb_submit_transfer(transfer);
+
+    if (retval) {
+        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR,
+                "Failed to submit transfer\n");
+        libusb_free_transfer(transfer);
+    }
+
+    return retval;
+}
+
+static int32_t ykush_update_port(struct usb_port *port, uint8_t cmd)
 {
     struct ykush_port *yport = (struct ykush_port*) port;
     struct ykush_hub *yhub = (struct ykush_hub*) port->parent;
     uint8_t port_cmd = 0;
-    struct libusb_transfer *transfer;
+
+    switch (yport->port_num) {
+    case 1:
+        port_cmd = YKUSH_CMD_PORT_1;
+        break;
+    case 2:
+        port_cmd = YKUSH_CMD_PORT_2;
+        break;
+    case 3:
+        port_cmd = YKUSH_CMD_PORT_3;
+        break;
+    default:
+        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR, "Unknown port, aborting\n");
+        return -1;
+    }
+
+    if (cmd == CMD_ENABLE) {
+        port_cmd |= 0x10;
+        if (ykush_perform_transfer(yport, yhub, port_cmd, ykush_enable_cb))
+            return -1;
+        else
+            return 0;
+    } else if (cmd == CMD_DISABLE) {
+        if (ykush_perform_transfer(yport, yhub, port_cmd, ykush_disable_cb))
+            return -1;
+        else
+            return 0;
+    }
+
+    if (!yport->enabled)
+        return 0;
 
     //Prevent resetting port multiple times. msg_mode is only set to reset when
     //we call this function, and unset when a reset is done. This guard is
@@ -84,59 +192,15 @@ static void ykush_update_port(struct usb_port *port, uint8_t cmd)
     if (yport->timeout_next.le_next != NULL ||
         yport->timeout_next.le_prev != NULL)
             usb_monitor_lists_del_timeout((struct usb_port*) yport);
-
-    switch (yport->port_num) {
-    case 1:
-        port_cmd = YKUSH_CMD_PORT_1;
-        break;
-    case 2:
-        port_cmd = YKUSH_CMD_PORT_2;
-        break;
-    case 3:
-        port_cmd = YKUSH_CMD_PORT_3;
-        break;
-    default:
-        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR, "Unknown port, aborting\n");
-        return;
-    }
-
+    
     if (!yport->pwr_state)
         port_cmd |= 0x10;
 
-    yport->buf[0] = yport->buf[1] = port_cmd;
-
-    //Here I need to set my expected modei, to start handling errors
-
-    //Follow the steps of the libusb async manual
-    transfer = libusb_alloc_transfer(0);
-
-    if (transfer == NULL) {
-        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR,
-                "Could not allocate trasnfer\n");
+    //Not considered an error, we will retry again later
+    if (ykush_perform_transfer(yport, yhub, port_cmd, ykush_reset_cb))
         usb_helpers_start_timeout(port, DEFAULT_TIMEOUT_SEC);
-        return;
-    }
 
-    //Use flags to save us from adding som basic logic
-    transfer->flags = LIBUSB_TRANSFER_SHORT_NOT_OK |
-                      LIBUSB_TRANSFER_FREE_TRANSFER;
-
-    libusb_fill_interrupt_transfer(transfer,
-                                   yhub->comm_handle,
-                                   0x01,
-                                   yport->buf,
-                                   sizeof(yport->buf),
-                                   ykush_reset_cb,
-                                   port,
-                                   5000);
-
-    if (libusb_submit_transfer(transfer)) {
-        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR,
-                "Failed to submit transfer\n");
-        libusb_free_transfer(transfer);
-        usb_helpers_start_timeout(port, DEFAULT_TIMEOUT_SEC);
-        return;
-    }
+    return 0;
 }
 
 static void ykush_handle_timeout(struct usb_port *port)
@@ -218,7 +282,7 @@ static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
         retval = usb_helpers_configure_port((struct usb_port*) &(yhub->port[i]),
                                             ctx, comm_path_ptr,
                                             num_port_numbers + 1, i + 1,
-                                            (struct usb_hub*) yhub, 1);
+                                            (struct usb_hub*) yhub);
 
         if (retval)
             break;

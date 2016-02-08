@@ -57,7 +57,7 @@ static void generic_update_cb(struct libusb_transfer *transfer)
     }
 }
 
-static void generic_update_port(struct usb_port *port, uint8_t cmd)
+static int32_t generic_update_port(struct usb_port *port, uint8_t cmd)
 {
     struct libusb_transfer *transfer;
     struct generic_port *gport = (struct generic_port *) port;
@@ -78,7 +78,7 @@ static void generic_update_port(struct usb_port *port, uint8_t cmd)
                         "Could not allocate transfer for:\n");
         gport->output((struct usb_port*) gport);
         usb_helpers_start_timeout((struct usb_port*) gport, DEFAULT_TIMEOUT_SEC);
-        return;
+        return 0;
     }
 
     //Use flags to save us from adding som basic logic
@@ -114,8 +114,9 @@ static void generic_update_port(struct usb_port *port, uint8_t cmd)
         libusb_close(gport->dev_handle);
         gport->dev_handle = NULL;
         usb_helpers_start_timeout((struct usb_port*) gport, DEFAULT_TIMEOUT_SEC);
-        return;
     }
+
+    return 0;
 }
 
 static void generic_timeout_port(struct usb_port *port)
@@ -149,7 +150,7 @@ static void generic_configure_hub(struct usb_monitor_ctx *ctx,
         usb_helpers_configure_port((struct usb_port*) gport,
                                   ctx, hub_path_ptr,
                                   num_port_numbers + 2, i + 1,
-                                  (struct usb_hub*) ghub, 1);
+                                  (struct usb_hub*) ghub);
 
         gport = gport + 1;
         ++i;
