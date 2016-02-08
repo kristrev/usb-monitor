@@ -34,14 +34,58 @@ static void gpio_print_port(struct usb_port *port)
     usb_helpers_print_port(port, "GPIO");
 }
 
-static void gpio_update_port(struct usb_port *port)
+static ssize_t gpio_write_value(struct gpio_port *gport, uint8_t gpio_val)
 {
-    struct gpio_port *gport = (struct gpio_port*) port;
-    uint8_t gpio_val = 0;
     //We will just write to /sys/class/gpio/gpioX/value, so no need for the full
     //4096 (upper limit according to getconf)
     char file_path[64];
-    int32_t bytes_written = 0, fd = 0;
+    int32_t fd;
+    ssize_t bytes_written = -1;
+
+    //Do a write, if write is successful then we update power state
+    snprintf(file_path, sizeof(file_path), "/sys/class/gpio/gpio%u/value",
+            gport->port_num);
+    
+    fd = open(file_path, O_WRONLY | FD_CLOEXEC);
+
+    if (fd == -1) {
+        USB_DEBUG_PRINT_SYSLOG(gport->ctx, LOG_ERR, "Failed to open gpio file\n");
+        //usb_helpers_start_timeout((struct usb_port*) gport, DEFAULT_TIMEOUT_SEC);
+        return bytes_written;
+    }
+
+    if (gpio_val)
+        bytes_written = write(fd, "1", 1);
+    else
+        bytes_written = write(fd, "0", 1);
+
+    close(fd);
+
+    return bytes_written;
+}
+
+static void gpio_update_port(struct usb_port *port, uint8_t cmd)
+{
+    struct gpio_port *gport = (struct gpio_port*) port;
+    uint8_t gpio_val = 0;
+
+    //TODO: Remember return values
+    if (cmd == CMD_ENABLE) {
+        gpio_write_value(gport, 1);
+        gport->enabled = 1;
+        return;
+    } else if (cmd == CMD_DISABLE) {
+        //No need to any special clean-up, device will be removed and then we
+        //let those functions take care of stopping timeouts etc.
+        gpio_write_value(gport, 0);
+        gport->enabled = 0;
+        return;
+    }
+
+    //Consider returning an error here, will happen if we ever to reset a
+    //disabled port
+    if (!gport->enabled)
+        return;
 
     gport->msg_mode = RESET;
 
@@ -57,42 +101,24 @@ static void gpio_update_port(struct usb_port *port)
     if (!gport->pwr_state)
         gpio_val = 1;
 
-    //Do a write, if write is successful then we update power state
-    snprintf(file_path, sizeof(file_path), "/sys/class/gpio/gpio%u/value", gport->port_num);
-    
-    fd = open(file_path, O_WRONLY | FD_CLOEXEC);
-
-    if (fd == -1) {
-        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_ERR, "Failed to open gpio file\n");
-        usb_helpers_start_timeout((struct usb_port*) gport, DEFAULT_TIMEOUT_SEC);
+    //If we for some reason fail to write, then we simply sleep and try again
+    if (gpio_write_value(gport, gpio_val) <= 0) {
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_ERR, "Failed to write to gpio\n");
+        usb_helpers_start_timeout((struct usb_port*) gport,
+                DEFAULT_TIMEOUT_SEC);
         return;
     }
 
-    if (gpio_val)
-        bytes_written = write(fd, "1", 1);
-    else
-        bytes_written = write(fd, "0", 1);
+    gport->pwr_state = !gport->pwr_state;
 
-    close(fd);
-
-    if (bytes_written > 0) {
-        gport->pwr_state = !gport->pwr_state;
-
-        if (gport->pwr_state) {
-            gport->msg_mode = IDLE;
-            return;
-        }
+    //port is switched on again, so it is safe to use for messages etc. It is OK
+    //to set IDLE here since there will be no device seen connected to port yet
+    if (gport->pwr_state) {
+        gport->msg_mode = IDLE;
+        return;
     }
 
-    //There is no error case. If we fail, then we simply sleep and try again. No
-    //device to free or anything
-
-    //Sleep no matter if write is successful or not
     usb_helpers_start_timeout((struct usb_port*) gport, GPIO_TIMEOUT_SLEEP_SEC);
-   
-    //TODO: How to check if we are done? If we get here, and inverse of
-    //power_state is off, then we have switched? Or?
-    //USB_DEBUG_PRINT(stderr, "GPIO update\n");
 }
 
 static void gpio_handle_timeout(struct usb_port *port)
@@ -100,7 +126,7 @@ static void gpio_handle_timeout(struct usb_port *port)
     if (port->msg_mode == PING)
         usb_helpers_send_ping(port);
     else
-        gpio_update_port(port);
+        gpio_update_port(port, CMD_RESTART);
 }
 
 //For GPIO, what is unique is the gpio number. A gpio number might be mapped to
@@ -144,7 +170,7 @@ static struct gpio_port* gpio_handler_create_port(struct usb_monitor_ctx *ctx,
 }
 
 static uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx,
-        char *path, uint8_t gpio_num)
+        char *path, uint8_t gpio_num, uint8_t enabled)
 {
     struct gpio_port *port;
 
@@ -174,7 +200,7 @@ static uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx,
     //Update path
     if (do_configure)
         retval = usb_helpers_configure_port((struct usb_port *) port,
-                ctx, dev_path_ptr, path_len, gpio_num, NULL);
+                ctx, dev_path_ptr, path_len, gpio_num, NULL, enabled);
     else
         retval = usb_helpers_port_add_path((struct usb_port *) port,
                 dev_path_ptr, path_len);
@@ -197,7 +223,7 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
     char *path;
     const char *path_org;
     int i, j;
-    uint8_t gpio_num = -1, unknown = 0;
+    uint8_t gpio_num = -1, unknown = 0, enabled = 1;
 
     for (i = 0; i < json_arr_len; i++) {
         json_port = json_object_array_get_idx(json, i); 
@@ -208,6 +234,9 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
                 continue;
             } else if (!strcmp(key, "gpio_num") && json_object_is_type(val, json_type_int)) {
                 gpio_num = (uint8_t) json_object_get_int(val);
+                continue;
+            } else if (!strcmp(key, "enabled") && json_object_is_type(val, json_type_int)) {
+                enabled = (uint8_t) json_object_get_int(val);
                 continue;
             } else {
                 unknown = 1;
@@ -227,7 +256,7 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
             if (!path)
                 return 1;
 
-            if (gpio_handler_add_port(ctx, path, gpio_num)) {
+            if (gpio_handler_add_port(ctx, path, gpio_num, enabled)) {
                 free(path);
                 return 1;
             }

@@ -11,7 +11,8 @@
 uint8_t usb_helpers_configure_port(struct usb_port *port,
                                    struct usb_monitor_ctx *ctx,
                                    const char *path, uint8_t path_len,
-                                   uint8_t port_num, struct usb_hub *parent)
+                                   uint8_t port_num, struct usb_hub *parent,
+                                   uint8_t enabled)
 {
         port->path[0] = strndup(path, path_len);
 
@@ -23,6 +24,7 @@ uint8_t usb_helpers_configure_port(struct usb_port *port,
         port->pwr_state = POWER_ON;
         port->ctx = ctx;
         port->parent = parent;
+        port->enabled = enabled;
 
         usb_monitor_lists_add_port(ctx, port);
 
@@ -239,10 +241,10 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
 {
     struct usb_port *port = transfer->user_data;
 
-    //With asynchrnous reset requests, we might be waiting for a "ping" reply
-    //when reset is requested. If this happens and reply arrives before device
-    //is removed, ignore ping reply
-    if (port->msg_mode != PING)
+    //With asynchrnous enable/disale/reset requests, we might be waiting for a
+    //"ping" reply when request occurs. If this happens and reply arrives before
+    //device is removed, ignore ping reply
+    if (!port->enabled || port->msg_mode != PING)
         return;
 
     if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
@@ -254,7 +256,7 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
         if (port->num_retrans == USB_RETRANS_LIMIT) {
             port->num_retrans = 0;
             if (port->msg_mode != RESET)
-                port->update(port);
+                port->update(port, CMD_RESTART);
             return;
         }
     } else {
@@ -417,13 +419,14 @@ void usb_helpers_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t forced)
     struct usb_port *itr;
 
     LIST_FOREACH(itr, &(ctx->port_list), port_next) {
-        //Only restart which are not connected and are currently not being reset
-        if (itr->msg_mode == RESET)
+        //Only restart enabled ports which are not connected and are currently
+        //not being reset
+        if (itr->msg_mode == RESET || !itr->enabled)
             continue;
 
         if (forced || itr->status == PORT_NO_DEV_CONNECTED ||
                 usb_helpers_check_bad_id(ctx, itr))
-            itr->update(itr);
+            itr->update(itr, CMD_RESTART);
     }
 }
 

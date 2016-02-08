@@ -57,7 +57,7 @@ static void generic_update_cb(struct libusb_transfer *transfer)
     }
 }
 
-static void generic_update_port(struct usb_port *port)
+static void generic_update_port(struct usb_port *port, uint8_t cmd)
 {
     struct libusb_transfer *transfer;
     struct generic_port *gport = (struct generic_port *) port;
@@ -123,7 +123,7 @@ static void generic_timeout_port(struct usb_port *port)
     if (port->msg_mode == PING)
         usb_helpers_send_ping(port);
     else
-        generic_update_port(port);
+        generic_update_port(port, CMD_RESTART);
 }
 
 static void generic_configure_hub(struct usb_monitor_ctx *ctx,
@@ -149,7 +149,7 @@ static void generic_configure_hub(struct usb_monitor_ctx *ctx,
         usb_helpers_configure_port((struct usb_port*) gport,
                                   ctx, hub_path_ptr,
                                   num_port_numbers + 2, i + 1,
-                                  (struct usb_hub*) ghub);
+                                  (struct usb_hub*) ghub, 1);
 
         gport = gport + 1;
         ++i;

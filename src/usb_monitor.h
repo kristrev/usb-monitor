@@ -41,7 +41,7 @@ struct http_client;
 
 //port function pointers
 typedef void (*print_port)(struct usb_port *port);
-typedef void (*update_port)(struct usb_port *port);
+typedef void (*update_port)(struct usb_port *port, uint8_t cmd);
 typedef void (*handle_timeout)(struct usb_port *port);
 
 enum {
@@ -80,6 +80,7 @@ enum {
         } vp_long; \
     } u; \
     uint8_t status; \
+    uint8_t enabled; \
     uint8_t pwr_state; \
     uint8_t msg_mode; \
     uint8_t path_len[MAX_NUM_PATHS]; \
@@ -109,6 +110,12 @@ enum port_status {
 enum power_state {
     POWER_OFF = 0,
     POWER_ON,
+};
+
+enum client_cmd {
+    CMD_RESTART = 0,
+    CMD_ENABLE,
+    CMD_DISABLE
 };
 
 struct usb_hub {

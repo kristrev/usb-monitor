@@ -160,7 +160,7 @@ static uint8_t usb_monitor_client_restart_ports(struct usb_monitor_ctx *ctx,
     int len = json_object_array_length(ports);
     int i;
     const char *path = NULL;
-    uint8_t cmd = 0;
+    uint8_t cmd = CMD_RESTART;
     uint8_t dev_path[USB_PATH_MAX];
     uint8_t path_len = 0, failure = 0;
     struct usb_port *port_ptr = NULL;
@@ -176,10 +176,10 @@ static uint8_t usb_monitor_client_restart_ports(struct usb_monitor_ctx *ctx,
                 path = json_object_get_string(val);
             else if (!strcmp(key, "cmd"))
                 //We currently ignore cmd for now
-                cmd = 1;
+                cmd = (uint8_t) json_object_get_int(val);
         }
 
-        if (path == NULL || cmd == 0) {
+        if (path == NULL || cmd > CMD_DISABLE) {
             failure = 1;
             break;
         }
@@ -192,21 +192,30 @@ static uint8_t usb_monitor_client_restart_ports(struct usb_monitor_ctx *ctx,
         }
 
         port_ptr = usb_monitor_lists_find_port_path(ctx, dev_path, path_len);
+
         //Silently discard this error. A device can for have been disconnect
         //before request is processed
         if (port_ptr == NULL)
             continue;
 
-        //If a device is being reset, do nothing. This is OK, there is no point
-        //queueing up reset requests
-        if (port_ptr->msg_mode == RESET)
-            continue;
+        if (cmd == CMD_RESTART) {
+            //If a device is being reset, do nothing. This is OK, there is no point
+            //queueing up reset requests
+            if (port_ptr->msg_mode == RESET)
+                continue;
 
-        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Requested to restart:\n");
+            USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Requested to restart:\n");
+        } else if (cmd == CMD_ENABLE) {
+            USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Requested to enable:\n");
+        } else {
+            USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Requested to disable:\n");
+        }
+
         port_ptr->output(port_ptr);
 
-        if (port_ptr->msg_mode != RESET)
-            port_ptr->update(port_ptr);
+        //TODO: Update failure based on return value from update-function
+        port_ptr->update(port_ptr, cmd);
+
     }
 
     return failure;

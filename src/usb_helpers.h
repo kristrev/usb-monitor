@@ -24,7 +24,8 @@ struct hub_descriptor {
 uint8_t usb_helpers_configure_port(struct usb_port *port,
                                    struct usb_monitor_ctx *ctx,
                                    const char *path, uint8_t path_len,
-                                   uint8_t port_num, struct usb_hub *parent);
+                                   uint8_t port_num, struct usb_hub *parent,
+                                   uint8_t enabled);
 
 //Release memory contained in the generic part of usb port
 void usb_helpers_release_port(struct usb_port *port);

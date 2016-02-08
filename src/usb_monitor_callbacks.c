@@ -46,7 +46,10 @@ static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     if (!port)
         return;
 
-    if (port->msg_mode == RESET)
+    //The enabled check is needed here sine we enable/disable async. So we can
+    //process a disabled request before an add event. Of course, device will
+    //most likely be remove in the next iteration of loop, but still ...
+    if (port->msg_mode == RESET || !port->enabled)
         return;
 
     //Need to check port if it already has a device, since we can risk that we
@@ -136,7 +139,11 @@ static void usb_monitor_check_timeouts(struct usb_monitor_ctx *ctx)
             timeout_itr = timeout_itr->timeout_next.le_next;
 
             usb_monitor_lists_del_timeout(old_timeout);
-            old_timeout->timeout(old_timeout);
+
+            //Due to async requests, this guard is needed to prevent us
+            //accidentaly sending PING on disabled port for example
+            if (old_timeout->enabled)
+                old_timeout->timeout(old_timeout);
         } else {
             timeout_itr = timeout_itr->timeout_next.le_next;
         }

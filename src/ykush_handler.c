@@ -28,7 +28,7 @@
 #include "usb_monitor_lists.h"
 #include "usb_logging.h"
 
-static void ykush_update_port(struct usb_port *port);
+static void ykush_update_port(struct usb_port *port, uint8_t cmd);
 
 /* TODO: Parts of this function is generic, split in two */
 static void ykush_print_port(struct usb_port *port)
@@ -64,7 +64,7 @@ static void ykush_reset_cb(struct libusb_transfer *transfer)
     }
 }
 
-static void ykush_update_port(struct usb_port *port)
+static void ykush_update_port(struct usb_port *port, uint8_t cmd)
 {
     struct ykush_port *yport = (struct ykush_port*) port;
     struct ykush_hub *yhub = (struct ykush_hub*) port->parent;
@@ -144,7 +144,7 @@ static void ykush_handle_timeout(struct usb_port *port)
     if (port->msg_mode == PING)
         usb_helpers_send_ping(port);
     else
-        ykush_update_port(port);
+        ykush_update_port(port, CMD_RESTART);
 }
 
 static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
@@ -215,11 +215,10 @@ static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
         yhub->port[i].timeout = ykush_handle_timeout;
         yhub->port[i].port_type = PORT_TYPE_YKUSH;
 
-
         retval = usb_helpers_configure_port((struct usb_port*) &(yhub->port[i]),
                                             ctx, comm_path_ptr,
                                             num_port_numbers + 1, i + 1,
-                                            (struct usb_hub*) yhub);
+                                            (struct usb_hub*) yhub, 1);
 
         if (retval)
             break;
