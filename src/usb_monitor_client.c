@@ -202,7 +202,7 @@ static uint8_t usb_monitor_client_update_ports(struct usb_monitor_ctx *ctx,
 
         if ((cmd == CMD_ENABLE && port_ptr->enabled) ||
             (cmd == CMD_DISABLE && !port_ptr->enabled))
-            return 0;
+            continue;
 
         if (cmd == CMD_RESTART) {
             //If a device is being reset, do nothing. This is OK, there is no point
@@ -221,7 +221,6 @@ static uint8_t usb_monitor_client_update_ports(struct usb_monitor_ctx *ctx,
 
         //TODO: Update failure based on return value from update-function
         failure = port_ptr->update(port_ptr, cmd);
-
     }
 
     return failure;
