@@ -45,7 +45,7 @@
     time(&rawtime); \
     curtime = gmtime(&rawtime); \
     if (ctx->use_syslog) \
-        USB_DEBUG_SYSLOG(LOG_INFO, _fmt, ##__VA_ARGS__); \
+        USB_DEBUG_SYSLOG(priority, _fmt, ##__VA_ARGS__); \
     USB_DEBUG_PRINT2(ctx->logfile, USB_LOG_PREFIX _fmt, \
         curtime->tm_hour, \
         curtime->tm_min, curtime->tm_sec, curtime->tm_mday, \
