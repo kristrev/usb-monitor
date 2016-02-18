@@ -229,7 +229,7 @@ static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
 
     if (num_ports != MAX_YKUSH_PORTS) {
         USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR, "YKUSH hub with odd number of ports %u\n", num_ports);
-        return 0;
+        //return 0; //FISH
     }
 
     //Set up com device
