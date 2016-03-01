@@ -107,12 +107,23 @@ static int32_t ykush_perform_transfer(struct ykush_port *yport,
 {
     struct libusb_transfer *transfer;
     int32_t retval = 0, buf_len = yhub->old_fw ? 6 : 64, transferred;
+    uint8_t rcv_buf[64];
 
     yport->buf[0] = yport->buf[1] = port_cmd;
 
     retval = libusb_interrupt_transfer(yhub->comm_handle, 0x01, yport->buf, buf_len, &transferred, 5000);
 
-    USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_INFO, "Transfered %d bytes\n", transferred);
+    if (retval < 0) 
+        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_INFO, "USB transfer failed\n");
+    
+    USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_INFO, "Transfered %d bytes %d\n", transferred, retval);
+
+    retval = libusb_interrupt_transfer(yhub->comm_handle, 0x81, rcv_buf, buf_len, &transferred, 5000);
+
+    if (retval < 0) 
+        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_INFO, "USB read failed\n");
+
+    USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_INFO, "Transfered %d bytes %d\n", transferred, retval);
 #if 0
     //Follow the steps of the libusb async manual
     transfer = libusb_alloc_transfer(0);
