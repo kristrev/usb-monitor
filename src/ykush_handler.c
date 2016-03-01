@@ -80,8 +80,8 @@ static void ykush_reset_cb(struct libusb_transfer *transfer)
 
     if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
         USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR,
-                "Failed to flip %u (%.4x:%.4x) %u\n",
-                yport->port_num, yport->u.vp.vid, yport->u.vp.pid, transfer->status);
+                "Failed to flip %u (%.4x:%.4x) %u %u\n",
+                yport->port_num, yport->u.vp.vid, yport->u.vp.pid, transfer->status, transfer->actual_length);
         //Set to IDLE in case of transfer error, we will then retry up/down on
         //next timeout (or on user request)
         yport->msg_mode = IDLE;
@@ -139,8 +139,6 @@ static int32_t ykush_perform_transfer(struct ykush_port *yport,
                 "Failed to submit transfer\n");
         libusb_free_transfer(transfer);
     }
-
-    USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_INFO, "Submit transfer\n");
 
     return retval;
 }
