@@ -211,6 +211,30 @@ static void ykush_handle_timeout(struct usb_port *port)
         ykush_update_port(port, CMD_RESTART);
 }
 
+//Return 1 if old firmware, 0 if new. Assumes new if something fails
+static uint8_t ykush_check_old_firmware(struct usb_monitor_ctx *ctx,
+        struct ykush_hub *yhub)
+{
+    struct libusb_device_descriptor desc;
+    uint8_t old_firmware = 0;
+    //Theoretical maximum length of serial is 256 bytes (0-255), so add one more
+    //byte here to make sure string is terminated
+    uint8_t dev_serial[257] = {0};
+
+    if (libusb_get_device_descriptor(yhub->comm_dev, &desc)) {
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR,
+                "Failed to allocate memory for YKUSH hub\n");
+        return old_firmware;
+    }
+
+    libusb_get_string_descriptor_ascii(yhub->comm_handle, desc.iSerialNumber,
+            dev_serial, 256);
+
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Serial %s\n", dev_serial);
+
+    return old_firmware;
+}
+
 static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
                                    struct ykush_hub *yhub)
 {
@@ -264,6 +288,8 @@ static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
         libusb_close(yhub->comm_handle);
         return 0;
     }
+
+    ykush_check_old_firmware(ctx, yhub);
 
     yhub->num_ports = num_ports;
 
@@ -339,6 +365,8 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
                 "Failed to allocate memory for YKUSH hub\n");
         return;
     }
+
+    //Check firmware version
 
     //Configure hub, split into new function
     //We need to have ownership of both devices, so we can match in del_device
