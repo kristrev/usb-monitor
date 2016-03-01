@@ -78,14 +78,14 @@ static void ykush_reset_cb(struct libusb_transfer *transfer)
     if (!yport->enabled)
         return;
 
-    if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
+    /*if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
         USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR,
                 "Failed to flip %u (%.4x:%.4x) %u %u\n",
                 yport->port_num, yport->u.vp.vid, yport->u.vp.pid, transfer->status, transfer->actual_length);
         //Set to IDLE in case of transfer error, we will then retry up/down on
         //next timeout (or on user request)
         yport->msg_mode = IDLE;
-    } else {
+    } else {*/
         USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_INFO, "Flipped port\n");
         //This works because what I store is the result of the comparion, which
         //is either 0 or 1
@@ -99,7 +99,7 @@ static void ykush_reset_cb(struct libusb_transfer *transfer)
             yport->msg_mode = IDLE;
         else
             usb_helpers_start_timeout((struct usb_port*) yport, DEFAULT_TIMEOUT_SEC);
-    }
+    //}
 }
 
 static int32_t ykush_perform_transfer(struct ykush_port *yport,
