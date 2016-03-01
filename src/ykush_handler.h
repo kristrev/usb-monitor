@@ -38,7 +38,7 @@
 struct ykush_port {
     USB_PORT_MANDATORY;
     //When doing async transfer, buffer needs to be allocated on heap
-    uint8_t buf[6];
+    uint8_t buf[64];
 };
 
 struct ykush_hub {
@@ -49,6 +49,7 @@ struct ykush_hub {
     //a different number of ports.
     //TODO: Consider using pointers, to reduce size of struct
     struct ykush_port port[MAX_YKUSH_PORTS];
+    uint8_t old_fw;
 };
 
 //This callback is used to handle YKUSH hubs being added and removed.

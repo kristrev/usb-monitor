@@ -86,6 +86,7 @@ static void ykush_reset_cb(struct libusb_transfer *transfer)
         //next timeout (or on user request)
         yport->msg_mode = IDLE;
     } else {
+        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_INFO, "Flipped port\n");
         //This works because what I store is the result of the comparion, which
         //is either 0 or 1
         yport->pwr_state = !yport->pwr_state;
@@ -105,7 +106,7 @@ static int32_t ykush_perform_transfer(struct ykush_port *yport,
         struct ykush_hub * yhub, uint8_t port_cmd,libusb_transfer_cb_fn cb)
 {
     struct libusb_transfer *transfer;
-    int32_t retval = 0;
+    int32_t retval = 0, buf_len = yhub->old_fw ? 6 : 64;
 
     yport->buf[0] = yport->buf[1] = port_cmd;
 
@@ -126,7 +127,7 @@ static int32_t ykush_perform_transfer(struct ykush_port *yport,
                                    yhub->comm_handle,
                                    0x01,
                                    yport->buf,
-                                   sizeof(yport->buf),
+                                   buf_len,
                                    cb,
                                    yport,
                                    5000);
@@ -138,6 +139,8 @@ static int32_t ykush_perform_transfer(struct ykush_port *yport,
                 "Failed to submit transfer\n");
         libusb_free_transfer(transfer);
     }
+
+    USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_INFO, "Submit transfer\n");
 
     return retval;
 }
@@ -237,7 +240,7 @@ static uint8_t ykush_check_old_firmware(struct usb_monitor_ctx *ctx,
     serial_num = atoi((const char*) (dev_serial + 2));
 
     if (serial_num < YKUSH_OLD_FW) {
-        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Old firmware\n");
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Device with old firmware\n");
         old_firmware = 1;
     }
 
@@ -298,8 +301,7 @@ static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
         return 0;
     }
 
-    ykush_check_old_firmware(ctx, yhub);
-
+    yhub->old_fw = ykush_check_old_firmware(ctx, yhub);
     yhub->num_ports = num_ports;
 
     comm_path[0] = libusb_get_bus_number(yhub->comm_dev);
@@ -374,8 +376,6 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
                 "Failed to allocate memory for YKUSH hub\n");
         return;
     }
-
-    //Check firmware version
 
     //Configure hub, split into new function
     //We need to have ownership of both devices, so we can match in del_device
