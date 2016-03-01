@@ -120,8 +120,7 @@ static int32_t ykush_perform_transfer(struct ykush_port *yport,
     }
 
     //Use flags to save us from adding som basic logic
-    transfer->flags = LIBUSB_TRANSFER_SHORT_NOT_OK |
-                      LIBUSB_TRANSFER_FREE_TRANSFER;
+    transfer->flags = LIBUSB_TRANSFER_FREE_TRANSFER;
 
     libusb_fill_interrupt_transfer(transfer,
                                    yhub->comm_handle,
