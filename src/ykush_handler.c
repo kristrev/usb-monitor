@@ -114,7 +114,7 @@ static int32_t ykush_perform_transfer(struct ykush_port *yport,
     retval = libusb_interrupt_transfer(yhub->comm_handle, 0x01, yport->buf, buf_len, &transferred, 5000);
 
     if (retval < 0) 
-        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_INFO, "USB transfer failed\n");
+        USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_INFO, "USB transfer failed %s\n", libusb_strerror(retval));
     
     USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_INFO, "Transfered %d bytes %d\n", transferred, retval);
 
