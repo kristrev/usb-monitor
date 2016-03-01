@@ -469,6 +469,7 @@ int main(int argc, char *argv[])
         fclose(usbmon_ctx->logfile);
         exit(EXIT_FAILURE);
     }
+    libusb_set_debug(NULL, 4);
 
     if (usb_monitor_configure(usbmon_ctx, 1))
         exit(EXIT_FAILURE);
