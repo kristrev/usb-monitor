@@ -220,6 +220,7 @@ static uint8_t ykush_check_old_firmware(struct usb_monitor_ctx *ctx,
     //Theoretical maximum length of serial is 256 bytes (0-255), so add one more
     //byte here to make sure string is terminated
     uint8_t dev_serial[257] = {0};
+    uint32_t serial_num = 0;
 
     if (libusb_get_device_descriptor(yhub->comm_dev, &desc)) {
         USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR,
@@ -230,7 +231,15 @@ static uint8_t ykush_check_old_firmware(struct usb_monitor_ctx *ctx,
     libusb_get_string_descriptor_ascii(yhub->comm_handle, desc.iSerialNumber,
             dev_serial, 256);
 
-    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Serial %s\n", dev_serial);
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Serial num. %s\n", dev_serial);
+
+    //Serial, at least for now, always starts with YK
+    serial_num = atoi((const char*) (dev_serial + 2));
+
+    if (serial_num < YKUSH_OLD_FW) {
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Old firmware\n");
+        old_firmware = 1;
+    }
 
     return old_firmware;
 }

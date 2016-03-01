@@ -26,6 +26,8 @@
 #define YKUSH_PID 0x0042
 #define YKUSH_PID2 0xF2F7
 
+#define YKUSH_OLD_FW 20400
+
 #define YKUSH_CMD_PORT_1    0x01
 #define YKUSH_CMD_PORT_2    0x02
 #define YKUSH_CMD_PORT_3    0x03
