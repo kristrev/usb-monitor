@@ -276,10 +276,8 @@ static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
     //The HID device occupies on port on hub device
     num_ports -= 1;
 
-    if (num_ports != MAX_YKUSH_PORTS) {
+    if (num_ports != MAX_YKUSH_PORTS)
         USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR, "YKUSH hub with odd number of ports %u\n", num_ports);
-        return 0;
-    }
 
     //Set up com device
     retval = libusb_open(yhub->comm_dev, &(yhub->comm_handle));
@@ -314,8 +312,10 @@ static uint8_t ykush_configure_hub(struct usb_monitor_ctx *ctx,
         return 0;
     }
 
+    //Until there exists a ykush hub with different number of ports, just assume
+    //that we have three ports
     yhub->old_fw = ykush_check_old_firmware(ctx, yhub);
-    yhub->num_ports = num_ports;
+    yhub->num_ports = MAX_YKUSH_PORTS;
 
     comm_path[0] = libusb_get_bus_number(yhub->comm_dev);
     num_port_numbers = libusb_get_port_numbers(yhub->comm_dev,
