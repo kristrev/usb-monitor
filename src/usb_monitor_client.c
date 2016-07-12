@@ -64,13 +64,13 @@ static uint8_t usb_monitor_client_add_paths_json(struct json_object *path_array,
         json_object_object_add(port_info, "mode", obj_add);
 
     //vid/pid
-    obj_add = json_object_new_int(port->u.vp.vid);
+    obj_add = json_object_new_int(port->vp.vid);
     if (obj_add == NULL)
         return 1;
     else
         json_object_object_add(port_info, "vid", obj_add);
 
-    obj_add = json_object_new_int(port->u.vp.pid);
+    obj_add = json_object_new_int(port->vp.pid);
     if (obj_add == NULL)
         return 1;
     else

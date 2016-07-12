@@ -61,8 +61,8 @@ static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
             "Device: %.4x:%.4x added\n", desc.idVendor, desc.idProduct);
 
     //We need to configure port. So far, this is all generic
-    port->u.vp.vid = desc.idVendor;
-    port->u.vp.pid = desc.idProduct;
+    port->vp.vid = desc.idVendor;
+    port->vp.pid = desc.idProduct;
     port->status = PORT_DEV_CONNECTED;
     port->dev = dev;
     port->msg_mode = PING;

@@ -70,15 +70,10 @@ enum {
     update_port update; \
     handle_timeout timeout; \
     uint64_t timeout_expire; \
-    union { \
-        struct { \
-            uint16_t vid; \
-            uint16_t pid; \
-        } vp; \
-        struct { \
-            uint32_t vidpid; \
-        } vp_long; \
-    } u; \
+    struct { \
+        uint16_t vid; \
+        uint16_t pid; \
+    } vp; \
     uint8_t status; \
     uint8_t enabled; \
     uint8_t pwr_state; \

@@ -43,7 +43,7 @@ static void ykush_enable_cb(struct libusb_transfer *transfer)
     if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
         USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR,
                 "Failed to enable %u (%.4x:%.4x)\n",
-                yport->port_num, yport->u.vp.vid, yport->u.vp.pid);
+                yport->port_num, yport->vp.vid, yport->vp.pid);
         return;
     }
 
@@ -58,7 +58,7 @@ static void ykush_disable_cb(struct libusb_transfer *transfer)
     if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
         USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR,
                 "Failed to disable %u (%.4x:%.4x)\n",
-                yport->port_num, yport->u.vp.vid, yport->u.vp.pid);
+                yport->port_num, yport->vp.vid, yport->vp.pid);
         return;
     }
 
@@ -81,7 +81,7 @@ static void ykush_reset_cb(struct libusb_transfer *transfer)
     if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
         USB_DEBUG_PRINT_SYSLOG(yport->ctx, LOG_ERR,
                 "Failed to flip %u (%.4x:%.4x)\n",
-                yport->port_num, yport->u.vp.vid, yport->u.vp.pid);
+                yport->port_num, yport->vp.vid, yport->vp.pid);
         //Set to IDLE in case of transfer error, we will then retry up/down on
         //next timeout (or on user request)
         yport->msg_mode = IDLE;

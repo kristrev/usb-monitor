@@ -228,8 +228,8 @@ void usb_helpers_reset_port(struct usb_port *port)
         usb_monitor_lists_del_timeout(port);
     }
 
-    port->u.vp.vid = 0;
-    port->u.vp.pid = 0;
+    port->vp.vid = 0;
+    port->vp.pid = 0;
     port->dev = NULL;
     port->dev_handle = NULL;
     port->status = PORT_NO_DEV_CONNECTED;
@@ -249,7 +249,7 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
     if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
         USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_ERR,
                 "Ping failed for %.4x:%.4x\n",
-                port->u.vp.vid, port->u.vp.pid);
+                port->vp.vid, port->vp.pid);
         port->num_retrans++;
 
         if (port->num_retrans == USB_RETRANS_LIMIT) {
@@ -262,7 +262,7 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
         if (++port->ping_cnt == PING_OUTPUT) {
             USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO,
                     "Ping success for %.4x:%.4x\n",
-                    port->u.vp.vid, port->u.vp.pid);
+                    port->vp.vid, port->vp.pid);
             port->ping_cnt = 0;
         }
         port->num_retrans = 0;
@@ -399,13 +399,14 @@ static const uint32_t usb_helpers_bad_ids[] = {
 static uint8_t usb_helpers_check_bad_id(struct usb_monitor_ctx *ctx, struct usb_port *port)
 {
     uint32_t num_bad_ids = sizeof(usb_helpers_bad_ids) / sizeof(uint32_t);
+    uint32_t vidpid = port->vp.vid << 16 | port->vp.pid;
     uint32_t i;
 
     for (i = 0; i < num_bad_ids; i++) {
-        if (port->u.vp_long.vidpid == usb_helpers_bad_ids[i]) {
+        if (vidpid == usb_helpers_bad_ids[i]) {
             USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
                     "Will restart due to bad ID %x\n",
-                    port->u.vp_long.vidpid);
+                    vidpid);
             return 1;
         }
     }
@@ -416,6 +417,8 @@ static uint8_t usb_helpers_check_bad_id(struct usb_monitor_ctx *ctx, struct usb_
 void usb_helpers_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t forced)
 {
     struct usb_port *itr;
+
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "reset_all_ports\n");
 
     LIST_FOREACH(itr, &(ctx->port_list), port_next) {
         //Only restart enabled ports which are not connected and are currently
