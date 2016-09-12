@@ -287,7 +287,7 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
     char *path;
     const char *path_org, *gpio_path = NULL;
     int i, j;
-    int16_t gpio_num = -1; 
+    uint8_t gpio_num = 0; 
     uint8_t on_val = GPIO_DEFAULT_ON_VAL;
     uint8_t off_val = GPIO_DEFAULT_OFF_VAL;
     uint8_t unknown = 0;
@@ -302,7 +302,7 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
                 continue;
             } else if (!strcmp(key, "gpio_num") && json_object_is_type(val, json_type_int)) {
                 //GPIO number (used to create sysfs template)
-                gpio_num = (int16_t) json_object_get_int(val);
+                gpio_num = (uint8_t) json_object_get_int(val);
                 continue;
             } else if (!strcmp(key, "on_val") && json_object_is_type(val, json_type_int)) {
                 //Custom on value (some devices are GPIO-like)
@@ -325,8 +325,8 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
         if (unknown ||
             path_array == NULL ||
             !json_object_array_length(path_array) ||
-            (gpio_num == -1 && !gpio_path) ||
-            (gpio_num > 0 && gpio_path))
+            (!gpio_num && !gpio_path) ||
+            (gpio_num && gpio_path))
             return 1;
         
         for (j = 0; j < json_object_array_length(path_array); j++) {
@@ -337,14 +337,14 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
             if (!path)
                 return 1;
 
-            if (gpio_handler_add_port(ctx, path, (uint8_t) gpio_num, on_val,
-                                      off_val, gpio_path)) {
+            if (gpio_handler_add_port(ctx, path, gpio_num, on_val, off_val,
+                        gpio_path)) {
                 free(path);
                 return 1;
             }
 
             USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
-                                   "Read following GPIO from config %s (%d) on: %u off: %u\n",
+                                   "Read following GPIO from config %s (%u) on: %u off: %u\n",
                                    path_org, gpio_num, on_val, off_val);
             free(path);
         }
