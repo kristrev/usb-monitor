@@ -181,8 +181,8 @@ static struct gpio_port* gpio_handler_create_port(struct usb_monitor_ctx *ctx,
     port->update = gpio_update_port;
     port->timeout = gpio_handle_timeout;
 
-    port->on_val = GPIO_DEFAULT_ON_VAL;
-    port->off_val = GPIO_DEFAULT_OFF_VAL;
+    port->on_val = on_val;
+    port->off_val = off_val;
     port->gpio_path = gpio_path;
 
     return port;
