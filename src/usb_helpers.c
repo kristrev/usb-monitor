@@ -416,6 +416,7 @@ static uint8_t usb_helpers_check_bad_id(struct usb_monitor_ctx *ctx, struct usb_
 
 void usb_helpers_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t forced)
 {
+#if 0
     struct usb_port *itr;
 
     USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "reset_all_ports\n");
@@ -430,6 +431,7 @@ void usb_helpers_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t forced)
                 usb_helpers_check_bad_id(ctx, itr))
             itr->update(itr, CMD_RESTART);
     }
+#endif
 }
 
 uint8_t usb_helpers_convert_char_to_path(char *path_str, uint8_t *path,
