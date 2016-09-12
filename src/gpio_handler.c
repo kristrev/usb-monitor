@@ -53,7 +53,7 @@ static ssize_t gpio_write_value(struct gpio_port *gport, uint8_t gpio_val)
     fd = open(file_path, O_WRONLY | FD_CLOEXEC);
 
     if (fd == -1) {
-        USB_DEBUG_PRINT_SYSLOG(gport->ctx, LOG_ERR, "Failed to open gpio file\n");
+        USB_DEBUG_PRINT_SYSLOG(gport->ctx, LOG_ERR, "Failed to open gpio file %s\n", file_path);
         //usb_helpers_start_timeout((struct usb_port*) gport, DEFAULT_TIMEOUT_SEC);
         return bytes_written;
     }
@@ -344,7 +344,7 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
             }
 
             USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
-                                   "Read following GPIO from config %s (%u) on: %u off: %u\n",
+                                   "Read following GPIO from config %s (%d) on: %u off: %u\n",
                                    path_org, gpio_num, on_val, off_val);
             free(path);
         }
