@@ -177,7 +177,6 @@ static uint8_t usb_monitor_client_update_ports(struct usb_monitor_ctx *ctx,
             if (!strcmp(key, "path"))
                 path = json_object_get_string(val);
             else if (!strcmp(key, "cmd"))
-                //We currently ignore cmd for now
                 cmd = (uint8_t) json_object_get_int(val);
         }
 

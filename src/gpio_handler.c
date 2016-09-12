@@ -36,23 +36,29 @@ static void gpio_print_port(struct usb_port *port)
 
 static ssize_t gpio_write_value(struct gpio_port *gport, uint8_t gpio_val)
 {
-    //We will just write to /sys/class/gpio/gpioX/value, so no need for the full
-    //4096 (upper limit according to getconf)
-    char file_path[64];
+    char file_path_arr[GPIO_PATH_MAX_LEN];
+    const char *file_path = file_path_arr;
     int32_t fd;
     ssize_t bytes_written = -1;
 
     //Do a write, if write is successful then we update power state
-    snprintf(file_path, sizeof(file_path), "/sys/class/gpio/gpio%u/value",
-            gport->port_num);
+    if (gport->gpio_path) {
+        file_path = gport->gpio_path;
+    } else {
+        snprintf(file_path_arr, sizeof(file_path_arr),
+                 "/sys/class/gpio/gpio%u/value",
+                 gport->port_num);
+    }
     
     fd = open(file_path, O_WRONLY | FD_CLOEXEC);
 
     if (fd == -1) {
-        USB_DEBUG_PRINT_SYSLOG(gport->ctx, LOG_ERR, "Failed to open gpio file\n");
+        USB_DEBUG_PRINT_SYSLOG(gport->ctx, LOG_ERR, "Failed to open gpio file %s\n", file_path);
         //usb_helpers_start_timeout((struct usb_port*) gport, DEFAULT_TIMEOUT_SEC);
         return bytes_written;
     }
+
+    //USB_DEBUG_PRINT_SYSLOG(gport->ctx, LOG_INFO, "Will write %u to %s\n", gpio_val, file_path);
 
     if (gpio_val)
         bytes_written = write(fd, "1", 1);
@@ -67,10 +73,10 @@ static ssize_t gpio_write_value(struct gpio_port *gport, uint8_t gpio_val)
 static int32_t gpio_update_port(struct usb_port *port, uint8_t cmd)
 {
     struct gpio_port *gport = (struct gpio_port*) port;
-    uint8_t gpio_val = 0;
+    uint8_t gpio_val = gport->off_val;
 
     if (cmd == CMD_ENABLE) {
-        if (gpio_write_value(gport, 1) <= 0)
+        if (gpio_write_value(gport, gport->on_val) <= 0)
             return -1;
 
         gport->enabled = 1;
@@ -79,7 +85,7 @@ static int32_t gpio_update_port(struct usb_port *port, uint8_t cmd)
     } else if (cmd == CMD_DISABLE) {
         //No need to any special clean-up, device will be removed and then we
         //let those functions take care of stopping timeouts etc.
-        if (gpio_write_value(gport, 0) <= 0)
+        if (gpio_write_value(gport, gport->off_val) <= 0)
             return -1;
 
         gport->enabled = 0;
@@ -107,7 +113,7 @@ static int32_t gpio_update_port(struct usb_port *port, uint8_t cmd)
 
     //POWER_OFF is 0, so then we should switch on port
     if (!gport->pwr_state)
-        gpio_val = 1;
+        gpio_val = gport->on_val;
 
     //If we for some reason fail to write, then we simply sleep and try again
     if (gpio_write_value(gport, gpio_val) <= 0) {
@@ -161,7 +167,7 @@ static struct gpio_port* gpio_handler_get_port(struct usb_monitor_ctx *ctx,
 }
 
 static struct gpio_port* gpio_handler_create_port(struct usb_monitor_ctx *ctx,
-        uint8_t gpio_num)
+        uint8_t gpio_num, uint8_t on_val, uint8_t off_val, const char *gpio_path)
 {
     struct gpio_port *port = calloc(sizeof(struct gpio_port), 1);
 
@@ -175,29 +181,57 @@ static struct gpio_port* gpio_handler_create_port(struct usb_monitor_ctx *ctx,
     port->update = gpio_update_port;
     port->timeout = gpio_handle_timeout;
 
+    port->on_val = on_val;
+    port->off_val = off_val;
+    port->gpio_path = gpio_path;
+
     return port;
 }
 
-static uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx,
-        char *path, uint8_t gpio_num)
+static uint8_t gpio_handler_add_port_gpio_path(struct usb_monitor_ctx *ctx,
+        const char *dev_path_ptr, uint8_t dev_path_len, uint8_t on_val,
+        uint8_t off_val, const char *gpio_path)
 {
-    struct gpio_port *port;
+    struct gpio_port *port = NULL;
+    const char *gpio_path_cpy = NULL;
 
-    //Bus + port(s)
-    uint8_t dev_path[USB_PATH_MAX];
-    const char *dev_path_ptr = (const char *) dev_path;
-    uint8_t path_len = 0, do_configure = 0, retval = 0;
+    gpio_path_cpy = strdup(gpio_path);
 
-    if (usb_helpers_convert_char_to_path(path, dev_path, &path_len)) {
-        fprintf(stderr, "Path for GPIO device is too long\n");
+    if (!gpio_path_cpy) {
+        fprintf(stderr, "Failed to allocate memory for gpio path\n");
         return 1;
     }
+
+    //TODO: Add lookup for port when needed
+    port = gpio_handler_create_port(ctx, 0, on_val, off_val, gpio_path_cpy);
+
+    if (!port) {
+        fprintf(stderr, "Failed to allocate memory for gpio port\n");
+        return 1;
+    }
+
+    if(usb_helpers_configure_port((struct usb_port *) port,
+                ctx, dev_path_ptr, dev_path_len, 0, NULL)) {
+        fprintf(stderr, "Failed to configure gpio port\n");
+        return 1;
+    }
+
+    return 0;
+}
+
+static uint8_t gpio_handler_add_port_gpio_num(struct usb_monitor_ctx *ctx,
+        char *path, uint8_t gpio_num, const char *dev_path_ptr,
+        uint8_t dev_path_len)
+{
+    struct gpio_port *port;
+    uint8_t do_configure = 0, retval = 0;
 
     port = gpio_handler_get_port(ctx, gpio_num);
 
     //Port not found, create new
     if (!port) {
-        port = gpio_handler_create_port(ctx, gpio_num);
+        port = gpio_handler_create_port(ctx, gpio_num, GPIO_DEFAULT_ON_VAL,
+                GPIO_DEFAULT_OFF_VAL, NULL);
         do_configure = 1;
     }
 
@@ -209,10 +243,10 @@ static uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx,
     //Update path
     if (do_configure)
         retval = usb_helpers_configure_port((struct usb_port *) port,
-                ctx, dev_path_ptr, path_len, gpio_num, NULL);
+                ctx, dev_path_ptr, dev_path_len, gpio_num, NULL);
     else
         retval = usb_helpers_port_add_path((struct usb_port *) port,
-                dev_path_ptr, path_len);
+                dev_path_ptr, dev_path_len);
 
     if (retval) {
         fprintf(stderr, "Failed to configure gpio port\n");
@@ -224,34 +258,77 @@ static uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx,
     return retval;
 }
 
+static uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx,
+        char *path, uint8_t gpio_num, uint8_t on_val, uint8_t off_val,
+        const char *gpio_path)
+{
+    //Bus + port(s)
+    uint8_t dev_path[USB_PATH_MAX];
+    const char *dev_path_ptr = (const char *) dev_path;
+    uint8_t dev_path_len = 0;
+
+    if (usb_helpers_convert_char_to_path(path, dev_path, &dev_path_len)) {
+        fprintf(stderr, "Path for GPIO device is too long\n");
+        return 1;
+    }
+
+    if (gpio_num) {
+        return gpio_handler_add_port_gpio_num(ctx, path, gpio_num, dev_path_ptr,
+                dev_path_len);
+    } else {
+        return gpio_handler_add_port_gpio_path(ctx, dev_path_ptr, dev_path_len,
+                on_val, off_val, gpio_path);
+    }
+}
+
 uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
                                 struct json_object *json)
 {
     int json_arr_len = json_object_array_length(json);
     struct json_object *json_port, *path_array = NULL, *json_path;
     char *path;
-    const char *path_org;
+    const char *path_org, *gpio_path = NULL;
     int i, j;
-    uint8_t gpio_num = -1, unknown = 0;
+    uint8_t gpio_num = 0; 
+    uint8_t on_val = GPIO_DEFAULT_ON_VAL;
+    uint8_t off_val = GPIO_DEFAULT_OFF_VAL;
+    uint8_t unknown = 0;
 
     for (i = 0; i < json_arr_len; i++) {
         json_port = json_object_array_get_idx(json, i); 
 
         json_object_object_foreach(json_port, key, val) {
             if (!strcmp(key, "path") && json_object_is_type(val, json_type_array)) {
+                //USB path to match
                 path_array = val;
                 continue;
             } else if (!strcmp(key, "gpio_num") && json_object_is_type(val, json_type_int)) {
+                //GPIO number (used to create sysfs template)
                 gpio_num = (uint8_t) json_object_get_int(val);
                 continue;
+            } else if (!strcmp(key, "on_val") && json_object_is_type(val, json_type_int)) {
+                //Custom on value (some devices are GPIO-like)
+                on_val = (uint8_t) json_object_get_int(val);
+                continue;
+            } else if (!strcmp(key, "off_val") && json_object_is_type(val, json_type_int)) {
+                //Custom off value
+                off_val = (uint8_t) json_object_get_int(val);
+                continue;
+            } else if (!strcmp(key, "gpio_path") && json_object_is_type(val, json_type_string)) {
+                //Custom path for GPIO like device (like modem on Glinet Mifi)
+                gpio_path = json_object_get_string(val);
+                break;
             } else {
                 unknown = 1;
                 break;
             }
         }
 
-        if (path_array == NULL || !json_object_array_length(path_array) ||
-                gpio_num == -1 || unknown)
+        if (unknown ||
+            path_array == NULL ||
+            !json_object_array_length(path_array) ||
+            (!gpio_num && !gpio_path) ||
+            (gpio_num && gpio_path))
             return 1;
         
         for (j = 0; j < json_object_array_length(path_array); j++) {
@@ -262,14 +339,16 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
             if (!path)
                 return 1;
 
-            if (gpio_handler_add_port(ctx, path, gpio_num)) {
+            if (gpio_handler_add_port(ctx, path, gpio_num, on_val, off_val,
+                        gpio_path)) {
                 free(path);
                 return 1;
             }
 
-            USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Read following GPIO from config %s (%u)\n", path_org, gpio_num);
+            USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
+                                   "Read following GPIO from config %s (%u) on: %u off: %u\n",
+                                   path_org, gpio_num, on_val, off_val);
             free(path);
-
         }
     }
 

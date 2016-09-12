@@ -418,8 +418,6 @@ void usb_helpers_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t forced)
 {
     struct usb_port *itr;
 
-    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "reset_all_ports\n");
-
     LIST_FOREACH(itr, &(ctx->port_list), port_next) {
         //Only restart enabled ports which are not connected and are currently
         //not being reset
