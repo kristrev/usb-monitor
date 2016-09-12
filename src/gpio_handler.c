@@ -36,15 +36,21 @@ static void gpio_print_port(struct usb_port *port)
 
 static ssize_t gpio_write_value(struct gpio_port *gport, uint8_t gpio_val)
 {
-    //We will just write to /sys/class/gpio/gpioX/value, so no need for the full
-    //4096 (upper limit according to getconf)
-    char file_path[64];
+    //128 is large anough to store sysfs paths (/sys/class/gpio/gpioX/value) +
+    //glinet paths (and then some)
+    char file_path_arr[128];
+    const char *file_path = file_path_arr;
     int32_t fd;
     ssize_t bytes_written = -1;
 
     //Do a write, if write is successful then we update power state
-    snprintf(file_path, sizeof(file_path), "/sys/class/gpio/gpio%u/value",
-            gport->port_num);
+    if (gport->gpio_path) {
+        file_path = gport->gpio_path;
+    } else {
+        snprintf(file_path_arr, sizeof(file_path_arr),
+                 "/sys/class/gpio/gpio%u/value",
+                 gport->port_num);
+    }
     
     fd = open(file_path, O_WRONLY | FD_CLOEXEC);
 
@@ -67,10 +73,10 @@ static ssize_t gpio_write_value(struct gpio_port *gport, uint8_t gpio_val)
 static int32_t gpio_update_port(struct usb_port *port, uint8_t cmd)
 {
     struct gpio_port *gport = (struct gpio_port*) port;
-    uint8_t gpio_val = 0;
+    uint8_t gpio_val = gport->off_val;
 
     if (cmd == CMD_ENABLE) {
-        if (gpio_write_value(gport, 1) <= 0)
+        if (gpio_write_value(gport, gport->on_val) <= 0)
             return -1;
 
         gport->enabled = 1;
@@ -79,7 +85,7 @@ static int32_t gpio_update_port(struct usb_port *port, uint8_t cmd)
     } else if (cmd == CMD_DISABLE) {
         //No need to any special clean-up, device will be removed and then we
         //let those functions take care of stopping timeouts etc.
-        if (gpio_write_value(gport, 0) <= 0)
+        if (gpio_write_value(gport, gport->off_val) <= 0)
             return -1;
 
         gport->enabled = 0;
@@ -107,7 +113,7 @@ static int32_t gpio_update_port(struct usb_port *port, uint8_t cmd)
 
     //POWER_OFF is 0, so then we should switch on port
     if (!gport->pwr_state)
-        gpio_val = 1;
+        gpio_val = gport->on_val;
 
     //If we for some reason fail to write, then we simply sleep and try again
     if (gpio_write_value(gport, gpio_val) <= 0) {
@@ -174,6 +180,9 @@ static struct gpio_port* gpio_handler_create_port(struct usb_monitor_ctx *ctx,
     port->output = gpio_print_port;
     port->update = gpio_update_port;
     port->timeout = gpio_handle_timeout;
+
+    port->on_val = GPIO_DEFAULT_ON_VAL;
+    port->off_val = GPIO_DEFAULT_OFF_VAL;
 
     return port;
 }

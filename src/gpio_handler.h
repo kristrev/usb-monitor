@@ -20,10 +20,15 @@
 
 #include "usb_monitor.h"
 
+#define GPIO_DEFAULT_ON_VAL     1
+#define GPIO_DEFAULT_OFF_VAL    0
 #define GPIO_TIMEOUT_SLEEP_SEC 10
 
 struct gpio_port {
     USB_PORT_MANDATORY;
+    char *gpio_path;
+    uint8_t on_val;
+    uint8_t off_val;
 };
 
 struct json_object;
