@@ -142,6 +142,8 @@ static uint8_t usb_monitor_parse_config(struct usb_monitor_ctx *ctx,
         return 1;
     }
 
+    retval = 0;
+
     json_object_object_foreach(conf_json, key, val) {
         if (!strcmp("handlers", key)) {
             if (json_object_get_type(val) != json_type_array) {
