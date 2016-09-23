@@ -153,13 +153,13 @@ static uint8_t usb_monitor_parse_config(struct usb_monitor_ctx *ctx,
             if ((retval = usb_monitor_parse_handlers(ctx, val))) {
                 break;
             }
-        } else if (!strcmp("disable_auto_reset", key)) {
+        } else if (!strcmp("disable_auto_restart", key)) {
             if (json_object_get_type(val) != json_type_boolean) {
                 fprintf(stderr, "disable_auto_reset is of incorect type");
                 retval = 1;
                 break;
             } else {
-                ctx->disable_auto_reset = json_object_get_boolean(val);
+                ctx->disable_auto_restart = json_object_get_boolean(val);
             }
         }
     }

@@ -136,7 +136,7 @@ struct usb_monitor_ctx {
     gid_t group_id;
     uint8_t clients_map;
     uint8_t use_syslog;
-    uint8_t disable_auto_reset;
+    uint8_t disable_auto_restart;
 };
 
 //Output all of the ports, move to helpers?
