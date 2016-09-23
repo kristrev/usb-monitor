@@ -112,10 +112,8 @@ static uint8_t usb_monitor_parse_config(struct usb_monitor_ctx *ctx,
     char buf[1024];
     FILE *conf_file;
     //TODO: Clean up a bit here
-    struct json_object *conf_json, *top_value;
-    struct lh_entry *obj_table;
+    struct json_object *conf_json;
     int retval = 0;
-    const char *obj_name;
 
     memset(buf, 0, sizeof(buf));
     conf_file = fopen(config_file_name, "re");
@@ -144,25 +142,27 @@ static uint8_t usb_monitor_parse_config(struct usb_monitor_ctx *ctx,
         return 1;
     }
 
-    obj_table = json_object_get_object(conf_json)->head;
-    obj_name = (char*) obj_table->k;
+    json_object_object_foreach(conf_json, key, val) {
+        if (!strcmp("handlers", key)) {
+            if (json_object_get_type(val) != json_type_array) {
+                fprintf(stderr, "handlers object is of incorrect type");
+                retval = 1;
+                break;
+            }
 
-    if (strcmp("handlers", obj_name)) {
-        fprintf(stderr, "Found unknown top-level object in JSON\n");
-        json_object_put(conf_json);
-        return 1;
+            if ((retval = usb_monitor_parse_handlers(ctx, val))) {
+                break;
+            }
+        } else if (!strcmp("disable_auto_reset", key)) {
+            if (json_object_get_type(val) != json_type_boolean) {
+                fprintf(stderr, "disable_auto_reset is of incorect type");
+                retval = 1;
+                break;
+            } else {
+                ctx->disable_auto_reset = json_object_get_boolean(val);
+            }
+        }
     }
-
-    //Iterate through the handlers
-    top_value = (struct json_object *) obj_table->v;
-
-    if (json_object_get_type(top_value) != json_type_array) {
-        fprintf(stderr, "Incorrect value for top-leve value\n");
-        json_object_put(conf_json);
-        return 1;
-    }
-
-    retval = usb_monitor_parse_handlers(ctx, top_value);
 
     json_object_put(conf_json);
     
@@ -197,7 +197,8 @@ static void usb_monitor_start_event_loop(struct usb_monitor_ctx *ctx)
                                         ctx, 25000))
         return;
 
-    if (!backend_event_loop_add_timeout(ctx->event_loop, cur_time + 60000,
+    if (!ctx->disable_auto_restart &&
+        !backend_event_loop_add_timeout(ctx->event_loop, cur_time + 60000,
                                         usb_monitor_check_reset_cb,
                                         ctx, 60000))
         return;
