@@ -33,16 +33,20 @@
 
 #define MAX_YKUSH_PORTS 3
 
+#define LEGACY_BUF_YKUSH_LEN 6
+#define MAX_BUF_YKUSH_LEN 65
+
 struct ykush_port {
     USB_PORT_MANDATORY;
     //When doing async transfer, buffer needs to be allocated on heap
-    uint8_t buf[6];
+    uint8_t buf[MAX_BUF_YKUSH_LEN];
 };
 
 struct ykush_hub {
     USB_HUB_MANDATORY;
     libusb_device *comm_dev;
     libusb_device_handle *comm_handle;
+    uint8_t legacy_dev;
     //These values are kept around in case Yepkit launches a different hub with
     //a different number of ports.
     //TODO: Consider using pointers, to reduce size of struct

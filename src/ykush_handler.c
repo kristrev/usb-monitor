@@ -106,8 +106,10 @@ static int32_t ykush_perform_transfer(struct ykush_port *yport,
 {
     struct libusb_transfer *transfer;
     int32_t retval = 0;
+    int buf_size = yhub->legacy_dev ? LEGACY_BUF_YKUSH_LEN : MAX_BUF_YKUSH_LEN;
 
-    yport->buf[0] = yport->buf[1] = port_cmd;
+    memset(yport->buf, 0, buf_size);
+    yport->buf[1] = yport->buf[2] = port_cmd;
 
     //Follow the steps of the libusb async manual
     transfer = libusb_alloc_transfer(0);
@@ -126,7 +128,7 @@ static int32_t ykush_perform_transfer(struct ykush_port *yport,
                                    yhub->comm_handle,
                                    0x01,
                                    yport->buf,
-                                   sizeof(yport->buf),
+                                   buf_size,
                                    cb,
                                    yport,
                                    5000);
@@ -324,6 +326,7 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
 {
     struct ykush_hub *yhub = NULL;
     struct usb_monitor_ctx *usbmon_ctx = user_data;
+    struct libusb_device_descriptor desc;
 
     //First step, get parent device and check if we already have it in the list
     libusb_device *parent = libusb_get_parent(device);
@@ -340,6 +343,8 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
         return;
     }
 
+    libusb_get_device_descriptor(device, &desc);
+
     //Configure hub, split into new function
     //We need to have ownership of both devices, so we can match in del_device
     libusb_ref_device(device);
@@ -347,6 +352,7 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
 
     yhub->hub_dev = parent;
     yhub->comm_dev = device;
+    yhub->legacy_dev = (desc.idProduct == YKUSH_PID);
 
     //TODO: Check error code
     if (!ykush_configure_hub(usbmon_ctx, yhub)) {
