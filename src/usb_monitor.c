@@ -473,6 +473,8 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
 
+    //libusb_set_debug(NULL, LIBUSB_LOG_LEVEL_DEBUG);
+
     if (usb_monitor_configure(usbmon_ctx, 1))
         exit(EXIT_FAILURE);
 
