@@ -154,7 +154,9 @@ static void usb_monitor_check_timeouts(struct usb_monitor_ctx *ctx)
 void usb_monitor_usb_event_cb(void *ptr, int32_t fd, uint32_t events)
 {
     struct timeval tv = {0 ,0};
+    libusb_unlock_events(NULL);
     libusb_handle_events_timeout_completed(NULL, &tv, NULL);
+    libusb_lock_events(NULL);
 }
 
 void usb_monitor_check_devices_cb(void *ptr)
@@ -178,7 +180,10 @@ void usb_monitor_itr_cb(void *ptr)
 
     //First, check for any of libusb's timers. We are incontrol of timer, so no
     //need for this function to block
+
+    libusb_unlock_events(NULL);
     libusb_handle_events_timeout_completed(NULL, &tv, NULL);
+    libusb_lock_events(NULL);
 
     //Check if we have any pending timeouts
     //TODO: Consider using the event loop timer queue for this
