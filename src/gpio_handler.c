@@ -197,7 +197,8 @@ static uint8_t gpio_handler_add_port_gpio_path(struct usb_monitor_ctx *ctx,
     struct gpio_port *port = NULL;
     const char *gpio_path_cpy = NULL;
 
-    gpio_path_cpy = strdup(gpio_path);
+    //gpio_path_cpy = strdup(gpio_path);
+    gpio_path_cpy = strdup("/sys/class/leds/gl_mifi\:3gcontrol/brightness");
 
     if (!gpio_path_cpy) {
         fprintf(stderr, "Failed to allocate memory for gpio path\n");
