@@ -36,7 +36,7 @@ static void gpio_print_port(struct usb_port *port)
 
 static ssize_t gpio_write_value(struct gpio_port *gport, uint8_t gpio_val)
 {
-    char file_path_arr[GPIO_PATH_MAX_LEN];
+    char file_path_arr[GPIO_PATH_MAX_LEN] = {0};
     const char *file_path = file_path_arr;
     int32_t fd;
     ssize_t bytes_written = -1;
@@ -50,6 +50,8 @@ static ssize_t gpio_write_value(struct gpio_port *gport, uint8_t gpio_val)
                  gport->port_num);
     }
     
+    USB_DEBUG_PRINT_SYSLOG(gport->ctx, LOG_ERR, "Will open %s\n", file_path);
+
     fd = open(file_path, O_WRONLY | FD_CLOEXEC);
 
     if (fd == -1) {
