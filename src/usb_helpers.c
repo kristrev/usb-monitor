@@ -165,6 +165,9 @@ uint8_t usb_helpers_get_num_ports(struct usb_monitor_ctx *ctx,
         return 0;
     }
 
+    //libusb needs event lock since we use a synchronous request here
+    libusb_unlock_events(NULL);
+
     //This is copied from lsusb. libusb get_descriptor helper does not set
     //class, which is required.
     //TODO: This call is currently sync, consider making async if I see any
@@ -180,7 +183,9 @@ uint8_t usb_helpers_get_num_ports(struct usb_monitor_ctx *ctx,
                                      (unsigned char*) &hubd,
                                      (uint16_t) sizeof(hubd),
                                      5000);
+
     libusb_close(hub_handle);
+    libusb_lock_events(NULL);
 
     if (retval < 0) {
         USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR,
@@ -329,6 +334,8 @@ void usb_helpers_send_ping(struct usb_port *port)
                                  port,
                                  5000);
 
+    libusb_unlock_events(NULL);
+
     if (libusb_submit_transfer(transfer)) {
         USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_ERR,
                 "Failed to submit transfer\n");
@@ -337,8 +344,9 @@ void usb_helpers_send_ping(struct usb_port *port)
         libusb_close(port->dev_handle);
         port->dev_handle = NULL;
         usb_helpers_start_timeout(port, DEFAULT_TIMEOUT_SEC);
-        return;
     }
+
+    libusb_lock_events(NULL);
 }
 
 void usb_helpers_check_devices(struct usb_monitor_ctx *ctx)
@@ -358,13 +366,12 @@ void usb_helpers_check_devices(struct usb_monitor_ctx *ctx)
         return;
     }
 
-    for (i = 0; i<cnt; i++) {
+    for (i = 0; i < cnt; i++) {
         dev = list[i];
         usb_monitor_cb(NULL, dev, LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED, ctx);
     }
 
     libusb_free_device_list(list, 1);
-
 }
 
 void usb_helpers_fill_port_array(struct libusb_device *dev,

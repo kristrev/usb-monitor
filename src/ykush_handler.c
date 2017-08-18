@@ -327,7 +327,7 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
 
     //First step, get parent device and check if we already have it in the list
     libusb_device *parent = libusb_get_parent(device);
-   
+
     if (usb_monitor_lists_find_hub(usbmon_ctx, parent))
         return;
 
@@ -355,7 +355,7 @@ static void ykush_add_device(libusb_context *ctx, libusb_device *device,
         ykush_release_memory(yhub);
         return;
     }
-    
+
     usb_monitor_lists_add_hub(usbmon_ctx, (struct usb_hub*) yhub);
     USB_DEBUG_PRINT_SYSLOG(usbmon_ctx, LOG_INFO,
             "Added new YKUSH hub. Num. ports %u\n", yhub->num_ports);

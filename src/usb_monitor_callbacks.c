@@ -114,9 +114,7 @@ int usb_monitor_cb(libusb_context *ctx, libusb_device *device,
     if (desc.idVendor == YKUSH_VID &&
         (desc.idProduct == YKUSH_PID || desc.idProduct == YKUSH_PID2)) {
         ykush_event_cb(ctx, device, event, user_data);
-    }/* else if (desc.bDeviceClass == LIBUSB_CLASS_HUB) {
-        generic_event_cb(ctx, device, event, user_data);
-    }*/
+    }
 
     return 0;
 }
