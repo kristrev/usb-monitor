@@ -104,6 +104,58 @@ static uint8_t usb_monitor_parse_handlers(struct usb_monitor_ctx *ctx,
     return 0;
 }
 
+static uint8_t usb_monitor_parse_bad_vid_pids(struct usb_monitor_ctx *ctx,
+                                              struct json_object *bad_vid_pids)
+{
+    int num_bad_vid_pids = json_object_array_length(bad_vid_pids);
+    int i;
+    uint16_t vid, pid;
+    struct json_object *bad_vid_pid;
+
+    if (!(ctx->bad_devices = calloc(sizeof(struct usb_bad_device) *
+                                    num_bad_vid_pids, 1))) {
+        fprintf(stderr, "Could not allocate bad devices memory\n");
+        return 1;
+    }
+
+    for (i = 0; i < num_bad_vid_pids; i++) {
+        bad_vid_pid = json_object_array_get_idx(bad_vid_pids, i);
+        vid = pid = 0;
+
+        if (json_object_get_type(bad_vid_pid) != json_type_object) {
+            fprintf(stderr, "Array element has incorrect type (not obj.)\n");
+            return 1;
+        }
+
+        json_object_object_foreach(bad_vid_pid, key, val) {
+            if (json_object_get_type(val) != json_type_int) {
+                fprintf(stderr, "Incorrect object found in array\n");
+                return 1;
+            }
+
+            if (!strcmp("vid", key)) {
+                vid = json_object_get_int(val);
+            } else if (!strcmp("pid", key)) {
+                pid = json_object_get_int(val);
+            } else {
+                fprintf(stderr, "Unknown key found\n");
+                return 1;
+            }
+        }
+
+        //Add wildcard support (for pid) later
+        if (!vid || !pid) {
+            fprintf(stderr, "vid/pid is not set\n");
+            return 1;
+        }
+
+        ctx->bad_devices[i].vid = vid;
+        ctx->bad_devices[i].pid = pid;
+    }
+
+    return 0;
+}
+
 //Return 0 on success, 1 on failure
 static uint8_t usb_monitor_parse_config(struct usb_monitor_ctx *ctx,
                                         const char *config_file_name)
@@ -162,6 +214,16 @@ static uint8_t usb_monitor_parse_config(struct usb_monitor_ctx *ctx,
                 break;
             } else {
                 ctx->disable_auto_restart = json_object_get_boolean(val);
+            }
+        } else if (!strcmp("bad_vid_pids", key)) {
+            if (json_object_get_type(val) != json_type_array) {
+                fprintf(stderr, "bad_vid_pids is of incorrect type");
+                retval = 1;
+                break;
+            }
+
+            if ((retval = usb_monitor_parse_bad_vid_pids(ctx, val))) {
+                break;
             }
         }
     }

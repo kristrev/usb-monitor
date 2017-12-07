@@ -121,11 +121,16 @@ struct usb_port {
     USB_PORT_MANDATORY;
 };
 
+struct usb_bad_device {
+    uint16_t vid;
+    uint16_t pid;
+};
 
 struct usb_monitor_ctx {
     struct backend_event_loop *event_loop;
     struct backend_epoll_handle *libusb_handle;
     struct backend_epoll_handle *accept_handle;
+    struct usb_bad_device *bad_devices;
     struct http_client *clients[MAX_HTTP_CLIENTS];
     struct timeval last_restart;
     struct timeval last_dev_check;
