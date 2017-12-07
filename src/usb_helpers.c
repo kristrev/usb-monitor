@@ -385,7 +385,8 @@ void usb_helpers_fill_port_array(struct libusb_device *dev,
 }
 
 void usb_helpers_convert_path_char(struct usb_port *port, char *output,
-                                   uint8_t* output_len, uint8_t path_idx) {
+                                   uint8_t* output_len, uint8_t path_idx)
+{
     uint8_t i, len = 0;
 
     //Assumes output is large enough to store complete path
@@ -398,23 +399,19 @@ void usb_helpers_convert_path_char(struct usb_port *port, char *output,
     *output_len = len;
 }
 
-static const uint32_t usb_helpers_bad_ids[] = {
-    //MF910 in bad state (temprature related reboot)
-    0x19d22004
-};
-
-static uint8_t usb_helpers_check_bad_id(struct usb_monitor_ctx *ctx, struct usb_port *port)
+static uint8_t usb_helpers_check_bad_id(struct usb_monitor_ctx *ctx,
+                                        struct usb_port *port)
 {
-    uint32_t num_bad_ids = sizeof(usb_helpers_bad_ids) / sizeof(uint32_t);
-    uint32_t vidpid = port->vp.vid << 16 | port->vp.pid;
     uint32_t i;
 
-    for (i = 0; i < num_bad_ids; i++) {
-        if (vidpid == usb_helpers_bad_ids[i]) {
+    for (i = 0; i < ctx->num_bad_device_ids; i++) {
+        if (port->vp.vid == ctx->bad_device_ids[i].vid &&
+            port->vp.vid == ctx->bad_device_ids[i].vid) {
             USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
-                    "Will restart due to bad ID %x\n",
-                    vidpid);
+                    "Will %.4x:%.4x due to bad ID\n",
+                    port->vp.vid, port->vp.pid);
             return 1;
+   
         }
     }
 

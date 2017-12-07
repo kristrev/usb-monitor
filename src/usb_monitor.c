@@ -107,13 +107,14 @@ static uint8_t usb_monitor_parse_handlers(struct usb_monitor_ctx *ctx,
 static uint8_t usb_monitor_parse_bad_vid_pids(struct usb_monitor_ctx *ctx,
                                               struct json_object *bad_vid_pids)
 {
-    int num_bad_vid_pids = json_object_array_length(bad_vid_pids);
+    uint32_t num_bad_vid_pids =
+        (uint32_t) json_object_array_length(bad_vid_pids);
     int i;
     uint16_t vid, pid;
     struct json_object *bad_vid_pid;
 
-    if (!(ctx->bad_devices = calloc(sizeof(struct usb_bad_device) *
-                                    num_bad_vid_pids, 1))) {
+    if (!(ctx->bad_device_ids = calloc(sizeof(struct usb_bad_device) *
+                                       num_bad_vid_pids, 1))) {
         fprintf(stderr, "Could not allocate bad devices memory\n");
         return 1;
     }
@@ -149,10 +150,11 @@ static uint8_t usb_monitor_parse_bad_vid_pids(struct usb_monitor_ctx *ctx,
             return 1;
         }
 
-        ctx->bad_devices[i].vid = vid;
-        ctx->bad_devices[i].pid = pid;
+        ctx->bad_device_ids[i].vid = vid;
+        ctx->bad_device_ids[i].pid = pid;
     }
 
+    ctx->num_bad_device_ids = num_bad_vid_pids;
     return 0;
 }
 
@@ -441,7 +443,8 @@ static uint8_t usb_monitor_configure(struct usb_monitor_ctx *ctx, uint8_t sock)
     //loops, the libusb thread and hotplug events/async transfers. However, the
     //documentation states that if poll() is used to monitor file descriptors,
     //then the libusb event lock must be acquired. The lock shall only be
-    //released when we are done handling libusb events, i.e., never
+    //released when we are done handling libusb events or need to give control
+    //to libusb, for example when reading the number of ports from a hub
     libusb_lock_events(NULL);
 
     return 0;
@@ -465,7 +468,7 @@ int main(int argc, char *argv[])
     uint8_t daemonize = 0;
     char *conf_file_name = NULL;
     struct sigaction sig_handler;
-    int32_t pid_fd;
+    int32_t pid_fd, i;
 
     //We should only allow one running instance of usb_monitor
     pid_fd = open("/var/run/usb_monitor.pid", O_CREAT | O_RDWR | O_CLOEXEC, 0644);
@@ -557,9 +560,19 @@ int main(int argc, char *argv[])
 
     usb_helpers_check_devices(usbmon_ctx);
 
-    USB_DEBUG_PRINT_SYSLOG(usbmon_ctx, LOG_INFO, "Initial state:\n");
 
+    USB_DEBUG_PRINT_SYSLOG(usbmon_ctx, LOG_INFO, "Initial state:\n");
     usb_monitor_print_ports(usbmon_ctx);
+
+    if (usbmon_ctx->bad_device_ids) {
+        USB_DEBUG_PRINT_SYSLOG(usbmon_ctx, LOG_INFO, "Bad device IDs:\n");
+
+        for (i = 0; i < usbmon_ctx->num_bad_device_ids; i++) {
+            USB_DEBUG_PRINT_SYSLOG(usbmon_ctx, LOG_INFO, "0x%.4x:0x%.4x\n",
+                                   usbmon_ctx->bad_device_ids[i].vid,
+                                   usbmon_ctx->bad_device_ids[i].pid);
+        }
+    }
 
     usb_monitor_start_event_loop(usbmon_ctx);
 

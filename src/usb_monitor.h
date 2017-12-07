@@ -130,7 +130,7 @@ struct usb_monitor_ctx {
     struct backend_event_loop *event_loop;
     struct backend_epoll_handle *libusb_handle;
     struct backend_epoll_handle *accept_handle;
-    struct usb_bad_device *bad_devices;
+    struct usb_bad_device *bad_device_ids;
     struct http_client *clients[MAX_HTTP_CLIENTS];
     struct timeval last_restart;
     struct timeval last_dev_check;
@@ -139,6 +139,7 @@ struct usb_monitor_ctx {
     LIST_HEAD(ports, usb_port) port_list;
     struct ports timeout_list;
     gid_t group_id;
+    uint32_t num_bad_device_ids;
     uint8_t clients_map;
     uint8_t use_syslog;
     uint8_t disable_auto_restart;
