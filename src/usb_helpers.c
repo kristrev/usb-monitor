@@ -408,7 +408,7 @@ static uint8_t usb_helpers_check_bad_id(struct usb_monitor_ctx *ctx,
         if (port->vp.vid == ctx->bad_device_ids[i].vid &&
             port->vp.vid == ctx->bad_device_ids[i].vid) {
             USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
-                    "Will %.4x:%.4x due to bad ID\n",
+                    "Will restart %.4x:%.4x due to bad ID\n",
                     port->vp.vid, port->vp.pid);
             return 1;
    
