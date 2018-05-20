@@ -383,7 +383,7 @@ int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx)
         USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
                                "Started probe for pin %s\n", port->gpio_path);
         port->probe_state = PROBE_DOWN;
-        port->msg_mode = PROBE;
+        //port->msg_mode = PROBE;
     }
 
     //Does not matter which port we start the timer for
