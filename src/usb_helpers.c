@@ -227,7 +227,7 @@ void usb_helpers_reset_port(struct usb_port *port)
     //RESET depends on timeout. If a reset message fails, device is moved
     //back to IDLE. If device is then removed, it will correctly be removed
     //from timeout as well
-    if ((port->msg_mode != RESET || port->msg_mode != PROBE) &&
+    if ((port->msg_mode != RESET && port->msg_mode != PROBE) &&
         (port->timeout_next.le_next != NULL ||
         port->timeout_next.le_prev != NULL)) {
         usb_monitor_lists_del_timeout(port);
