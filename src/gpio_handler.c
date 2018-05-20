@@ -367,8 +367,6 @@ int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx)
     struct usb_port *itr;
     struct gpio_port *port = NULL;
 
-    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Start probe for pin\n");
-
     LIST_FOREACH(itr, &(ctx->port_list), port_next) {
         if (itr->port_type != PORT_TYPE_GPIO)
             continue;
@@ -391,13 +389,13 @@ int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx)
         //Stop timeout for all ports here. It is maybe not very elegant, but I
         //found it easier than adding some probe/non-probe check to the generic
         //add helper
-        usb_monitor_lists_del_timeout(port);
+        if (usb_monitor_lists_is_timeout_active(itr)) {
+            usb_monitor_lists_del_timeout(itr);
+        }
     }
 
     //Does not matter which port we start the timer for
     usb_helpers_start_timeout((struct usb_port*) port, GPIO_TIMEOUT_SLEEP_SEC);
-
-    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Done start probe for pin\n");
 
     return 0;
 }

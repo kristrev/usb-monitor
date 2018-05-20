@@ -87,6 +87,11 @@ void usb_monitor_lists_del_timeout(struct usb_port *port)
     port->timeout_next.le_prev = NULL;
 }
 
+uint8_t usb_monitor_lists_is_timeout_active(struct usb_port *port)
+{
+    return port->timeout_next.le_next || port->timeout_next.le_prev;
+}
+
 /* HUB list functions  */
 void usb_monitor_lists_add_hub(struct usb_monitor_ctx *ctx, struct usb_hub *hub)
 {

@@ -454,10 +454,7 @@ static int32_t usb_monitor_start_probe()
 {
     struct usb_port *itr;
 
-    fprintf(stdout, "usb_monitor_start_probe\n");
-
     LIST_FOREACH(itr, &(usbmon_ctx->port_list), port_next) {
-        fprintf(stdout, "usb_monitor_start_probe port %u\n", itr->port_type);
         //If/when we adde more handlers, probing should be made a callback
         if (itr->port_type == PORT_TYPE_GPIO) {
             return gpio_handler_start_probe(usbmon_ctx);
