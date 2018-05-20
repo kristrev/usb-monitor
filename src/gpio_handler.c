@@ -70,10 +70,14 @@ static ssize_t gpio_write_value(struct gpio_port *gport, uint8_t gpio_val)
     return bytes_written;
 }
 
+//TODO: Wrap this one so that I can check for PROBE when requests from user
+//space arrives
 static int32_t gpio_update_port(struct usb_port *port, uint8_t cmd)
 {
     struct gpio_port *gport = (struct gpio_port*) port;
     uint8_t gpio_val = gport->off_val;
+
+    //TODO: If I am probing, start timer and return
 
     if (cmd == CMD_ENABLE) {
         if (gpio_write_value(gport, gport->on_val) <= 0)
@@ -138,10 +142,13 @@ static int32_t gpio_update_port(struct usb_port *port, uint8_t cmd)
 
 static void gpio_handle_timeout(struct usb_port *port)
 {
-    if (port->msg_mode == PING)
+    if (port->msg_mode == PING) {
         usb_helpers_send_ping(port);
-    else
+    } else if (port->msg_mode == PROBE) {
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Done with probe step one\n");
+    } else {
         gpio_update_port(port, CMD_RESTART);
+    }
 }
 
 //For GPIO, what is unique is the gpio number. A gpio number might be mapped to
@@ -355,7 +362,32 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
     return 0;
 }
 
-void gpio_handler_start_probe(struct usb_monitor_ctx *ctx, struct gpio_port *port)
+int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx)
 {
+    struct usb_port *itr;
+    struct gpio_port *port;
 
+    LIST_FOREACH(itr, &(ctx->port_list), port_next) {
+        if (itr->port_type != PORT_TYPE_GPIO)
+            continue;
+
+        port = (struct gpio_port*) itr;
+
+        if (gpio_update_port(itr, CMD_DISABLE)) {
+            USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR,
+                                   "Failed to start probe for pin %s\n",
+                                   port->gpio_path);
+            return -1; 
+        }
+
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
+                               "Started probe for pin %s\n", port->gpio_path);
+        port->probe_state = PROBE_DOWN;
+        port->msg_mode = PROBE;
+    }
+
+    //Does not matter which port we start the timer for
+    usb_helpers_start_timeout(itr, GPIO_TIMEOUT_SLEEP_SEC);
+
+    return 0;
 }

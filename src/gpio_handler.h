@@ -26,17 +26,25 @@
 //64 is large anough to store maximum sysfs paths (/sys/class/gpio/gpioX/value)
 #define GPIO_PATH_MAX_LEN      64
 
+enum {
+    PROBE_IDLE = 0,
+    PROBE_DOWN,
+    PROBE_UP,
+    PROBE_DONE
+};
+
 struct gpio_port {
     USB_PORT_MANDATORY;
     const char *gpio_path;
     uint8_t on_val;
     uint8_t off_val;
+    uint8_t probe_state;
 };
 
 struct json_object;
 
 uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx, struct json_object *json);
 
-void gpio_handler_start_probe(struct usb_monitor_ctx *ctx, struct gpio_port *port);
+int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx);
 
 #endif

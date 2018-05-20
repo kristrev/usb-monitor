@@ -450,16 +450,18 @@ static uint8_t usb_monitor_configure(struct usb_monitor_ctx *ctx, uint8_t sock)
     return 0;
 }
 
-static void usb_monitor_start_probe()
+static int32_t usb_monitor_start_probe()
 {
     struct usb_port *itr;
 
     LIST_FOREACH(itr, &(usbmon_ctx->port_list), port_next) {
         //If/when we adde more handlers, probing should be made a callback
         if (itr->port_type == PORT_TYPE_GPIO) {
-            gpio_handler_start_probe(usbmon_ctx, (void*) itr);
+            return gpio_handler_start_probe(usbmon_ctx);
         }
     }
+
+    return 0;
 }
 
 static void usb_monitor_print_usage()
@@ -591,8 +593,11 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (do_probe)
-        usb_monitor_start_probe();
+    if (do_probe) {
+        if (usb_monitor_start_probe()) {
+            exit(EXIT_FAILURE);
+        }
+    }
 
     usb_monitor_start_event_loop(usbmon_ctx);
 
