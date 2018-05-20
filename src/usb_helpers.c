@@ -248,8 +248,10 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
     //With asynchrnous enable/disale/reset requests, we might be waiting for a
     //"ping" reply when request occurs. If this happens and reply arrives before
     //device is removed, ignore ping reply
-    if (!port->enabled || port->msg_mode != PING)
+    if (!port->enabled || port->msg_mode != PING) {
+        printf("PINGPING\n");
         return;
+    }
 
     if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
         USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_ERR,

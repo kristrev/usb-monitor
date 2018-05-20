@@ -365,7 +365,7 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
 int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx)
 {
     struct usb_port *itr;
-    struct gpio_port *port;
+    struct gpio_port *port = NULL;
 
     LIST_FOREACH(itr, &(ctx->port_list), port_next) {
         if (itr->port_type != PORT_TYPE_GPIO)
@@ -383,11 +383,11 @@ int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx)
         USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
                                "Started probe for pin %s\n", port->gpio_path);
         port->probe_state = PROBE_DOWN;
-        //port->msg_mode = PROBE;
+        port->msg_mode = PROBE;
     }
 
     //Does not matter which port we start the timer for
-    //usb_helpers_start_timeout((struct usb_port*) port, GPIO_TIMEOUT_SLEEP_SEC);
+    usb_helpers_start_timeout((struct usb_port*) port, GPIO_TIMEOUT_SLEEP_SEC);
 
     return 0;
 }
