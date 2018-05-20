@@ -384,6 +384,12 @@ int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx)
                                "Started probe for pin %s\n", port->gpio_path);
         port->probe_state = PROBE_DOWN;
         port->msg_mode = PROBE;
+
+        //Timeout is started when we add a device (in order to run USB ping).
+        //Stop timeout for all ports here. It is maybe not very elegant, but I
+        //found it easier than adding some probe/non-probe check to the generic
+        //add helper
+        usb_monitor_lists_del_timeout(port);
     }
 
     //Does not matter which port we start the timer for
