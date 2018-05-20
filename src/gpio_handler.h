@@ -37,4 +37,6 @@ struct json_object;
 
 uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx, struct json_object *json);
 
+void gpio_handler_start_probe(struct usb_monitor_ctx *ctx, struct gpio_port *port);
+
 #endif

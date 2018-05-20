@@ -450,6 +450,18 @@ static uint8_t usb_monitor_configure(struct usb_monitor_ctx *ctx, uint8_t sock)
     return 0;
 }
 
+static void usb_monitor_start_probe()
+{
+    struct usb_port *itr;
+
+    LIST_FOREACH(itr, &(usbmon_ctx->port_list), port_next) {
+        //If/when we adde more handlers, probing should be made a callback
+        if (itr->port_type == PORT_TYPE_GPIO) {
+            gpio_handler_start_probe(usbmon_ctx, (void*) itr);
+        }
+    }
+}
+
 static void usb_monitor_print_usage()
 {
     fprintf(stdout, "usb monitor command line arguments:\n");
@@ -458,6 +470,8 @@ static void usb_monitor_print_usage()
     fprintf(stdout, "\t-g : group id of usb monitor socket (optional)\n");
     fprintf(stdout, "\t-d : run as daemon\n");
     fprintf(stdout, "\t-s : write to syslog\n");
+    fprintf(stdout, "\t-p : generate pin/port mapping dynamically (optional,"
+            " only GPIO for now, default is false)\n");
     fprintf(stdout, "\t-h : this output\n");
 }
 
@@ -469,6 +483,7 @@ int main(int argc, char *argv[])
     char *conf_file_name = NULL;
     struct sigaction sig_handler;
     int32_t pid_fd, i;
+    uint8_t do_probe = 0;
 
     //We should only allow one running instance of usb_monitor
     pid_fd = open("/var/run/usb_monitor.pid", O_CREAT | O_RDWR | O_CLOEXEC, 0644);
@@ -490,7 +505,7 @@ int main(int argc, char *argv[])
 
     usbmon_ctx->logfile = stderr;
 
-    while ((retval = getopt(argc, argv, "o:c:g:dhs")) != -1) {
+    while ((retval = getopt(argc, argv, "o:c:g:dhsp")) != -1) {
         switch (retval) {
         case 'o':
             usbmon_ctx->logfile = fopen(optarg, "a+");
@@ -506,6 +521,9 @@ int main(int argc, char *argv[])
             break;
         case 'g':
             usbmon_ctx->group_id = atoi(optarg);
+            break;
+        case 'p':
+            do_probe = 1;
             break;
         case 'h':
         default:
@@ -572,6 +590,9 @@ int main(int argc, char *argv[])
                                    usbmon_ctx->bad_device_ids[i].pid);
         }
     }
+
+    if (do_probe)
+        usb_monitor_start_probe();
 
     usb_monitor_start_event_loop(usbmon_ctx);
 

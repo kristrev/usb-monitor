@@ -354,3 +354,8 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
 
     return 0;
 }
+
+void gpio_handler_start_probe(struct usb_monitor_ctx *ctx, struct gpio_port *port)
+{
+
+}
