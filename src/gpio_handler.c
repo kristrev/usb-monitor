@@ -58,7 +58,7 @@ static ssize_t gpio_write_value(struct gpio_port *gport, uint8_t gpio_val)
         return bytes_written;
     }
 
-    USB_DEBUG_PRINT_SYSLOG(gport->ctx, LOG_INFO, "Will write %u to %s\n", gpio_val, file_path);
+    //USB_DEBUG_PRINT_SYSLOG(gport->ctx, LOG_INFO, "Will write %u to %s\n", gpio_val, file_path);
 
     if (gpio_val)
         bytes_written = write(fd, "1", 1);
