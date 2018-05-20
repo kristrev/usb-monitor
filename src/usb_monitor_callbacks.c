@@ -138,9 +138,10 @@ static void usb_monitor_check_timeouts(struct usb_monitor_ctx *ctx)
 
             usb_monitor_lists_del_timeout(old_timeout);
 
-            //Due to async requests, this guard is needed to prevent us
-            //accidentaly sending PING on disabled port for example
-            if (old_timeout->enabled)
+            //Due to async requests, the enabled guard is needed to prevent us
+            //accidentaly sending PING on disabled port for example. However,
+            //in the case of probe, we need to call timeout callback
+            if (old_timeout->enabled || old_timeout->msg_mode == PROBE)
                 old_timeout->timeout(old_timeout);
         } else {
             timeout_itr = timeout_itr->timeout_next.le_next;
