@@ -90,7 +90,8 @@ enum {
 enum port_msg {
     IDLE = 0,
     PING,
-    RESET
+    RESET,
+    PROBE
 };
 
 enum port_status {

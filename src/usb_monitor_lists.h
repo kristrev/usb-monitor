@@ -39,5 +39,6 @@ struct usb_port *usb_monitor_lists_find_port_path(struct usb_monitor_ctx *ctx,
 //Add or delete port from timeout list
 void usb_monitor_lists_add_timeout(struct usb_monitor_ctx *ctx, struct usb_port *port);
 void usb_monitor_lists_del_timeout(struct usb_port *port);
+uint8_t usb_monitor_lists_is_timeout_active(struct usb_port *port);
 
 #endif

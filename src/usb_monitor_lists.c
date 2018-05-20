@@ -67,8 +67,9 @@ struct usb_port *usb_monitor_lists_find_port_path(struct usb_monitor_ctx *ctx,
                 break;
 
             if ((itr->path_len[i] == path_len) &&
-                (!memcmp(itr->path[i], path, path_len)))
+                (!memcmp(itr->path[i], path, path_len))) {
                 return itr;
+            }
         }
     }
 
@@ -85,6 +86,11 @@ void usb_monitor_lists_del_timeout(struct usb_port *port)
     LIST_REMOVE(port, timeout_next);
     port->timeout_next.le_next = NULL;
     port->timeout_next.le_prev = NULL;
+}
+
+uint8_t usb_monitor_lists_is_timeout_active(struct usb_port *port)
+{
+    return port->timeout_next.le_next || port->timeout_next.le_prev;
 }
 
 /* HUB list functions  */
