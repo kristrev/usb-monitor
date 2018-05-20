@@ -387,7 +387,7 @@ int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx)
     }
 
     //Does not matter which port we start the timer for
-    usb_helpers_start_timeout((struct usb_port*) port, GPIO_TIMEOUT_SLEEP_SEC);
+    //usb_helpers_start_timeout((struct usb_port*) port, GPIO_TIMEOUT_SLEEP_SEC);
 
     return 0;
 }
