@@ -623,7 +623,7 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
             !json_object_array_length(path_array) ||
             (!gpio_num && !gpio_path) ||
             (gpio_num && gpio_path)) {
-            fprintf(stderr, "Wrong option\n");
+            fprintf(stderr, "%u %u %u %u %u\n", unknown, path_array == NULL, !json_object_array_length(path_array), (!gpio_num && !gpio_path), (gpio_num && gpio_path));
             return 1;
         }
         
@@ -633,13 +633,11 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
             path = strdup(path_org);
 
             if (!path) {
-                fprintf(stderr, "Path not found\n");
                 return 1;
             }
 
             if (gpio_handler_add_port(ctx, path, gpio_num, on_val, off_val,
                         gpio_path)) {
-                fprintf(stderr, "Failed to add port\n");
                 free(path);
                 return 1;
             }
