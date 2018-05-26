@@ -631,7 +631,30 @@ static void gpio_handler_swap_port_info(struct usb_port *port_match,
 void gpio_handler_handle_probe_connect(struct usb_port *port)
 {
     struct usb_port *itr;
-    struct gpio_port *g_port = (struct gpio_port*) port;
+    struct gpio_port *g_port;
+
+    //This guard is needed in case we time out in the same iteration of the
+    //event loop as the connect message of the device. We can only connect one
+    //and one device (enable one and one port), so if a port is set to
+    //PROBE_DOWN_2 then we should not accept any new devices. That the device
+    //might get added to the wrong port is not so important, port is being set
+    //as down anyway
+    LIST_FOREACH(itr, &(port->ctx->port_list), port_next) {
+        if (itr->port_type != PORT_TYPE_GPIO) {
+            continue;
+        }
+
+        g_port = (struct gpio_port*) port;
+
+        if (g_port->probe_state == PROBE_DOWN_2) {
+            USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Port is being set as "
+                                   "down after timeout. Do not accept new "
+                                   "devices\n");
+            return;
+        }
+    }
+
+    g_port = (struct gpio_port*) port;
 
     //If the device connected maps to the port we are probing, mapping is
     //correct
