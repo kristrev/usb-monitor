@@ -224,6 +224,8 @@ static void gpio_handle_probe_up_timeout(struct gpio_port *port)
                                "disabled\n", port->gpio_path);
     } else {
         port->probe_state = PROBE_DOWN_2;
+        //When we run CMD_DISABLE, msg_mode is set to IDLE. We don't want that
+        port->msg_mode = PROBE;
     }
 
     usb_helpers_start_timeout((struct usb_port*) port,
@@ -265,7 +267,6 @@ static void gpio_handle_probe_down_2(struct gpio_port *port)
 
 static void gpio_on_probe_timeout(struct gpio_port *port)
 {
-    fprintf(stderr, "timeout state %u\n", port->probe_state);
     if (port->probe_state == PROBE_DOWN ||
         port->probe_state == PROBE_DOWN_DONE) {
         port->probe_state = PROBE_DOWN_DONE;
