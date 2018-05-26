@@ -226,8 +226,6 @@ static void gpio_handle_probe_up_timeout(struct gpio_port *port)
         port->probe_state = PROBE_DOWN_2;
     }
 
-    fprintf(stderr, "START TIMEOUT\n");
-
     usb_helpers_start_timeout((struct usb_port*) port,
                               GPIO_TIMEOUT_PROBE_DISABLE_SEC);
 }
@@ -267,6 +265,7 @@ static void gpio_handle_probe_down_2(struct gpio_port *port)
 
 static void gpio_on_probe_timeout(struct gpio_port *port)
 {
+    fprintf(stderr, "timeout state %u\n", port->probe_state);
     if (port->probe_state == PROBE_DOWN ||
         port->probe_state == PROBE_DOWN_DONE) {
         port->probe_state = PROBE_DOWN_DONE;
