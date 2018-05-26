@@ -301,7 +301,7 @@ static uint8_t gpio_handler_add_port_gpio_path(struct usb_monitor_ctx *ctx,
 }
 
 static uint8_t gpio_handler_add_port_gpio_num(struct usb_monitor_ctx *ctx,
-        char *path, uint8_t gpio_num, const char *dev_path_ptr,
+        uint8_t gpio_num, const char *dev_path_ptr,
         uint8_t dev_path_len)
 {
     struct gpio_port *port;
@@ -354,7 +354,7 @@ static uint8_t gpio_handler_add_port(struct usb_monitor_ctx *ctx,
     }
 
     if (gpio_num) {
-        return gpio_handler_add_port_gpio_num(ctx, path, gpio_num, dev_path_ptr,
+        return gpio_handler_add_port_gpio_num(ctx, gpio_num, dev_path_ptr,
                 dev_path_len);
     } else {
         return gpio_handler_add_port_gpio_path(ctx, dev_path_ptr, dev_path_len,
@@ -498,6 +498,10 @@ void gpio_handler_handle_probe_connect(struct usb_port *port)
 {
     struct usb_port *itr;
     struct gpio_port *g_port = (struct gpio_port*) port;
+    struct gpio_port *g_port_org;
+    char *path_tmp[MAX_NUM_PATHS] = {0};
+    uint8_t path_len_tmp[MAX_NUM_PATHS] = {0};
+    uint8_t i;
 
     //If the device connected maps to the port we are probing, mapping is
     //correct
@@ -519,27 +523,74 @@ void gpio_handler_handle_probe_connect(struct usb_port *port)
         return;
     }
 
-#if 0
-    //Port is the port that matches the device path, NOT necessarily the port
-    //the we set as UP. Therefor, we need to find the port where probe_state is
-    //set to PROBE_UP. There can only be one port with state set to PROBE_UP
-    if (g_port->probe_state != PROBE_UP) {
-        g_port = NULL;
+    //Path mismatch, need to find correct port
+    g_port = NULL;
 
-        LIST_FOREACH(itr, &(port->ctx->port_list), port_next) {
-            if (itr->port_type != PORT_TYPE_GPIO)
-                continue;
+    LIST_FOREACH(itr, &(port->ctx->port_list), port_next) {
+        if (itr->port_type != PORT_TYPE_GPIO)
+            continue;
 
-            g_port = (struct gpio_port*) itr;
+        g_port = (struct gpio_port*) itr;
 
-            if (g_port->probe_state == PROBE_UP) {
-                break;
-            }
+        if (g_port->probe_state == PROBE_UP) {
+            break;
         }
-    } 
+    }
 
-    //Stop device connect timeout
-   
-    //Compare paths
-#endif
+    //This can happen if a probed device for example crashes or is in some other
+    //way restarted while we are probin. State is set to PROBE_DONE, so we will
+    //not match any port
+    if (!g_port) {
+        return;
+    }
+    
+    //This is the port where the event happened, I will switch device path
+    //between this port and the port that I probed
+    g_port_org = (struct gpio_port*) port;
+
+    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Will swap path mapping "
+                           "(before)\n");
+    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Original owner of path:\n");
+    gpio_print_port(port);
+    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Probed port:\n");
+    gpio_print_port(itr);
+
+    //Move from the port we matched on to temporary, and NULL original
+    for (i = 0; i < MAX_NUM_PATHS; i++) {
+        if (!g_port_org->path[i]) {
+            break;
+        }
+
+        path_tmp[i] = g_port_org->path[i];
+        path_len_tmp[i] = g_port_org->path_len[i];
+        g_port_org->path[i] = NULL;
+    }
+
+    //Move from port we probe and to the port we matched on
+    for (i = 0; i < MAX_NUM_PATHS; i++) {
+        if (!g_port->path[i]) {
+            break;
+        }
+
+        g_port_org->path[i] = g_port->path[i];
+        g_port_org->path_len[i] = g_port->path_len[i];
+        g_port->path[i] = NULL;
+    }
+
+    //Move the mapping from the port we matched on and to the port we probe
+    for (i = 0; i < MAX_NUM_PATHS; i++) {
+        if (!path_tmp[i]) {
+            break;
+        }
+
+        g_port->path[i] = path_tmp[i];
+        g_port->path_len[i] = path_len_tmp[i];
+    }
+
+    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Will swap path mapping "
+                           "(after)\n");
+    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Original owner of path:\n");
+    gpio_print_port(port);
+    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Probed port:\n");
+    gpio_print_port(itr);
 }
