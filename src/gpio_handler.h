@@ -29,6 +29,7 @@
 enum {
     PROBE_IDLE = 0,
     PROBE_DOWN,
+    PROBE_DOWN_DONE,
     PROBE_UP,
     PROBE_DONE
 };

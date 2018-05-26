@@ -140,12 +140,49 @@ static int32_t gpio_update_port(struct usb_port *port, uint8_t cmd)
     return 0;
 }
 
+static void gpio_on_probe_down_done(struct gpio_port *port)
+{
+    struct usb_port *itr;
+    struct gpio_port *gpio_itr;
+
+    //Check if any device has not successfully been shut down
+    LIST_FOREACH(itr, &(port->ctx->port_list), port_next) {
+        if (itr->port_type != PORT_TYPE_GPIO)
+            continue;
+
+        gpio_itr = (struct gpio_port*) itr;
+
+        if (gpio_itr->vp.vid || gpio_itr->vp.pid) {
+            USB_DEBUG_PRINT_SYSLOG(gpio_itr->ctx, LOG_INFO, "Port %s still has "
+                                   "device connected\n", gpio_itr->gpio_path);
+            usb_helpers_start_timeout(itr, GPIO_TIMEOUT_SLEEP_SEC);
+            return;
+        }
+    }
+
+    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "All ports down, ready to "
+            "start probe\n");
+
+    //Start setting ports up
+}
+
+static void gpio_on_probe_timeout(struct gpio_port *port)
+{
+    if (port->probe_state == PROBE_DOWN ||
+        port->probe_state == PROBE_DOWN_DONE) {
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Port %s moved to/in "
+                "PROBE_DOWN_DONE\n", port->gpio_path);
+        port->probe_state = PROBE_DOWN_DONE;
+        gpio_on_probe_down_done(port);
+    }
+}
+
 static void gpio_handle_timeout(struct usb_port *port)
 {
     if (port->msg_mode == PING) {
         usb_helpers_send_ping(port);
     } else if (port->msg_mode == PROBE) {
-        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Done with probe step one\n");
+        gpio_on_probe_timeout((struct gpio_port*) port);
     } else {
         gpio_update_port(port, CMD_RESTART);
     }
@@ -395,6 +432,11 @@ int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx)
     }
 
     //Does not matter which port we start the timer for
+    //TODO: Consider restructuring usb monitor to have a handler for every port
+    //type (and not just port objects for != Ykush). Right now, for example this
+    //timer is used as a global timer for GPIO, but the timer is actually tied
+    //to only one port. The code works because access to ports is serialized
+    //while probing, but the structure is a bit confusing
     usb_helpers_start_timeout((struct usb_port*) port, GPIO_TIMEOUT_SLEEP_SEC);
 
     return 0;
