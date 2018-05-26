@@ -480,7 +480,7 @@ int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx)
     return 0;
 }
 
-void gpio_handler_restart_all_ports(struct usb_monitor_ctx *ctx)
+static void gpio_handler_restart_all_ports(struct usb_monitor_ctx *ctx)
 {
     struct usb_port *itr;
 
@@ -511,9 +511,9 @@ void gpio_handler_handle_probe_connect(struct usb_port *port)
         if (!gpio_probe_enable_port(port->ctx)) {
             USB_DEBUG_PRINT_SYSLOG(g_port->ctx, LOG_INFO, "Done with "
                                    "probing\n");
-            //Write configuration to file
-
             //Restart all ports, so that we can handle devices
+            gpio_handler_restart_all_ports(port->ctx);
+            //Write configuration to file
         }
 
         return;
