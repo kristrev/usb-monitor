@@ -480,6 +480,19 @@ int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx)
     return 0;
 }
 
+void gpio_handler_restart_all_ports(struct usb_monitor_ctx *ctx)
+{
+    struct usb_port *itr;
+
+    LIST_FOREACH(itr, &(ctx->port_list), port_next) {
+        if (itr->port_type != PORT_TYPE_GPIO) {
+            continue;
+        }
+
+        //No need to reset msg_mode, it is done in update_port
+        gpio_update_port(itr, CMD_RESTART);
+    }
+}
 
 void gpio_handler_handle_probe_connect(struct usb_port *port)
 {
@@ -498,9 +511,11 @@ void gpio_handler_handle_probe_connect(struct usb_port *port)
         if (!gpio_probe_enable_port(port->ctx)) {
             USB_DEBUG_PRINT_SYSLOG(g_port->ctx, LOG_INFO, "Done with "
                                    "probing\n");
+            //Write configuration to file
 
             //Restart all ports, so that we can handle devices
         }
+
         return;
     }
 
