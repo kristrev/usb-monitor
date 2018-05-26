@@ -592,6 +592,7 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
         json_port = json_object_array_get_idx(json, i); 
 
         json_object_object_foreach(json_port, key, val) {
+            fprintf(stderr, "KEY %s\n", key);
             if (!strcmp(key, "path")) {
                 fprintf(stderr, "Array type: %u\n", json_object_get_type(val));
             }
