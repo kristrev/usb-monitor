@@ -509,14 +509,88 @@ static void gpio_handler_restart_all_ports(struct usb_monitor_ctx *ctx)
     }
 }
 
+//port_match is the the port that we matched on in the
+//usb_device_added-callback, while port_probe is the port that was probed. We
+//will swap path + device information between match and probe, as the mapping is
+//wrong and it is port_probe the controls the device path stored in port_match
+static void gpio_handler_swap_port_info(struct usb_port *port_match,
+                                        struct usb_port *port_probe)
+{
+    char *path_tmp[MAX_NUM_PATHS] = {0};
+    uint8_t path_len_tmp[MAX_NUM_PATHS] = {0};
+    uint8_t i;
+    struct usb_monitor_ctx *ctx = port_match->ctx;
+
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Will swap path mapping "
+                           "(before)\n");
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Port (match):\n");
+    gpio_print_port(port_match);
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Port (probe):\n");
+    gpio_print_port(port_probe);
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "\n");
+
+    //Move from the port we matched on to temporary, and NULL original
+    for (i = 0; i < MAX_NUM_PATHS; i++) {
+        if (!port_match->path[i]) {
+            break;
+        }
+
+        path_tmp[i] = port_match->path[i];
+        path_len_tmp[i] = port_match->path_len[i];
+        port_match->path[i] = NULL;
+    }
+
+    //Move from port we probed and to the port we matched on
+    for (i = 0; i < MAX_NUM_PATHS; i++) {
+        if (!port_probe->path[i]) {
+            break;
+        }
+
+        port_match->path[i] = port_probe->path[i];
+        port_match->path_len[i] = port_probe->path_len[i];
+        port_probe->path[i] = NULL;
+    }
+
+    //Move the mapping from the port we matched on and to the port we probe
+    for (i = 0; i < MAX_NUM_PATHS; i++) {
+        if (!path_tmp[i]) {
+            break;
+        }
+
+        port_probe->path[i] = path_tmp[i];
+        port_probe->path_len[i] = path_len_tmp[i];
+    }
+
+    //Also need to copy/reset the information about the current device
+    port_probe->vp.vid = port_match->vp.vid;
+    port_probe->vp.pid = port_match->vp.pid;
+    port_probe->status = port_match->status;
+    port_probe->dev = port_match->dev;
+
+    port_match->vp.vid = port_match->vp.pid = port_match->status = 0;
+    port_match->dev = NULL;
+
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Will swap path mapping "
+                           "(after)\n");
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Port (match):\n");
+    gpio_print_port(port_match);
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Port (probe):\n");
+    gpio_print_port(port_probe);
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "\n");
+}
+
+void gpio_handler_handle_probe_done(struct usb_monitor_ctx *ctx)
+{
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Done with probing\n");
+    //Restart all ports, so that we can handle devices
+    gpio_handler_restart_all_ports(ctx);
+    //Write configuration to file
+}
+
 void gpio_handler_handle_probe_connect(struct usb_port *port)
 {
     struct usb_port *itr;
     struct gpio_port *g_port = (struct gpio_port*) port;
-    struct gpio_port *g_port_org;
-    char *path_tmp[MAX_NUM_PATHS] = {0};
-    uint8_t path_len_tmp[MAX_NUM_PATHS] = {0};
-    uint8_t i;
 
     //If the device connected maps to the port we are probing, mapping is
     //correct
@@ -528,11 +602,7 @@ void gpio_handler_handle_probe_connect(struct usb_port *port)
         
         //Probe next port
         if (!gpio_probe_enable_port(port->ctx)) {
-            USB_DEBUG_PRINT_SYSLOG(g_port->ctx, LOG_INFO, "Done with "
-                                   "probing\n");
-            //Restart all ports, so that we can handle devices
-            gpio_handler_restart_all_ports(port->ctx);
-            //Write configuration to file
+            gpio_handler_handle_probe_done(port->ctx);
         }
 
         return;
@@ -558,75 +628,13 @@ void gpio_handler_handle_probe_connect(struct usb_port *port)
     if (!g_port) {
         return;
     }
-    
-    //This is the port where the event happened, I will switch device path
-    //between this port and the port that I probed
-    g_port_org = (struct gpio_port*) port;
-
-    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Will swap path mapping "
-                           "(before)\n");
-    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Original owner of path:\n");
-    gpio_print_port(port);
-    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Probed port:\n");
-    gpio_print_port(itr);
-    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "\n");
-
-    //Move from the port we matched on to temporary, and NULL original
-    for (i = 0; i < MAX_NUM_PATHS; i++) {
-        if (!g_port_org->path[i]) {
-            break;
-        }
-
-        path_tmp[i] = g_port_org->path[i];
-        path_len_tmp[i] = g_port_org->path_len[i];
-        g_port_org->path[i] = NULL;
-    }
-
-    //Move from port we probe and to the port we matched on
-    for (i = 0; i < MAX_NUM_PATHS; i++) {
-        if (!g_port->path[i]) {
-            break;
-        }
-
-        g_port_org->path[i] = g_port->path[i];
-        g_port_org->path_len[i] = g_port->path_len[i];
-        g_port->path[i] = NULL;
-    }
-
-    //Move the mapping from the port we matched on and to the port we probe
-    for (i = 0; i < MAX_NUM_PATHS; i++) {
-        if (!path_tmp[i]) {
-            break;
-        }
-
-        g_port->path[i] = path_tmp[i];
-        g_port->path_len[i] = path_len_tmp[i];
-    }
-
-    //Also need to copy/reset the information about the current device
-    itr->vp.vid = port->vp.vid;
-    itr->vp.pid = port->vp.pid;
-    itr->status = port->status;
-    itr->dev = port->dev;
-
-    port->vp.vid = port->vp.pid = port->status = 0;
-    port->dev = NULL;
-
-    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Will swap path mapping "
-                           "(after)\n");
-    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Original owner of path:\n");
-    gpio_print_port(port);
-    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Probed port:\n");
-    gpio_print_port(itr);
-    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "\n");
+   
+    gpio_handler_swap_port_info(port, itr);
 
     usb_monitor_lists_del_timeout(itr);
     g_port->probe_state = PROBE_DONE;
 
     if (!gpio_probe_enable_port(port->ctx)) {
-        USB_DEBUG_PRINT_SYSLOG(g_port->ctx, LOG_INFO, "Done with probing\n");
-        //Restart all ports, so that we can handle devices
-        gpio_handler_restart_all_ports(port->ctx);
-        //Write configuration to file
+        gpio_handler_handle_probe_done(port->ctx);
     }
 }
