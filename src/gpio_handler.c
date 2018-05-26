@@ -230,9 +230,36 @@ static void gpio_handle_probe_up_timeout(struct gpio_port *port)
                               GPIO_TIMEOUT_PROBE_DISABLE_SEC);
 }
 
+static void gpio_handler_restart_all_ports(struct usb_monitor_ctx *ctx)
+{
+    struct usb_port *itr;
+
+    LIST_FOREACH(itr, &(ctx->port_list), port_next) {
+        if (itr->port_type != PORT_TYPE_GPIO) {
+            continue;
+        }
+
+        //No need to reset msg_mode, it is done in update_port
+        gpio_update_port(itr, CMD_RESTART);
+    }
+}
+
+static void gpio_handler_handle_probe_done(struct usb_monitor_ctx *ctx)
+{
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Done with probing\n");
+    //Restart all ports, so that we can handle devices
+    gpio_handler_restart_all_ports(ctx);
+    //Write configuration to file
+}
+
 static void gpio_handle_probe_down_2(struct gpio_port *port)
 {
-    
+    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Probing port %s disabled after"
+                           " PROBE_UP timeout\n", port->gpio_path);
+
+    if (!gpio_probe_enable_port(port->ctx)) {
+        gpio_handler_handle_probe_done(port->ctx);
+    }
 }
 
 static void gpio_on_probe_timeout(struct gpio_port *port)
@@ -244,7 +271,7 @@ static void gpio_on_probe_timeout(struct gpio_port *port)
     } else if (port->probe_state == PROBE_UP) {
         gpio_handle_probe_up_timeout(port);
     } else if (port->probe_state == PROBE_DOWN_2) {
-    
+        gpio_handle_probe_down_2(port); 
     }
 }
 
@@ -523,20 +550,6 @@ int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx)
     return 0;
 }
 
-static void gpio_handler_restart_all_ports(struct usb_monitor_ctx *ctx)
-{
-    struct usb_port *itr;
-
-    LIST_FOREACH(itr, &(ctx->port_list), port_next) {
-        if (itr->port_type != PORT_TYPE_GPIO) {
-            continue;
-        }
-
-        //No need to reset msg_mode, it is done in update_port
-        gpio_update_port(itr, CMD_RESTART);
-    }
-}
-
 //port_match is the the port that we matched on in the
 //usb_device_added-callback, while port_probe is the port that was probed. We
 //will swap path + device information between match and probe, as the mapping is
@@ -605,14 +618,6 @@ static void gpio_handler_swap_port_info(struct usb_port *port_match,
     USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Port (probe):\n");
     gpio_print_port(port_probe);
     USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "\n");
-}
-
-void gpio_handler_handle_probe_done(struct usb_monitor_ctx *ctx)
-{
-    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Done with probing\n");
-    //Restart all ports, so that we can handle devices
-    gpio_handler_restart_all_ports(ctx);
-    //Write configuration to file
 }
 
 void gpio_handler_handle_probe_connect(struct usb_port *port)
