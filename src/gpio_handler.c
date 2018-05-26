@@ -190,6 +190,8 @@ static void gpio_on_probe_down_done(struct gpio_port *port)
             usb_helpers_start_timeout(itr, GPIO_TIMEOUT_PROBE_DISABLE_SEC);
             return;
         }
+
+        gpio_itr->probe_state = PROBE_DOWN_DONE;
     }
 
     USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "All ports down, ready to "
@@ -497,7 +499,7 @@ void gpio_handler_handle_probe_connect(struct usb_port *port)
             USB_DEBUG_PRINT_SYSLOG(g_port->ctx, LOG_INFO, "Done with "
                                    "probing\n");
 
-            //Restart all ports?
+            //Restart all ports, so that we can handle devices
         }
         return;
     }
