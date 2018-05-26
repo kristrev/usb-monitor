@@ -593,4 +593,7 @@ void gpio_handler_handle_probe_connect(struct usb_port *port)
     gpio_print_port(port);
     USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Probed port:\n");
     gpio_print_port(itr);
+
+    usb_monitor_lists_del_timeout(itr);
+    g_port->probe_state = PROBE_DONE;
 }
