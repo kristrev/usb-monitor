@@ -140,6 +140,38 @@ static int32_t gpio_update_port(struct usb_port *port, uint8_t cmd)
     return 0;
 }
 
+//Find first port to probe. Returns 0 if no port could be found (we are done
+//probing)
+static uint8_t gpio_probe_enable_port(struct usb_monitor_ctx *ctx)
+{
+    struct usb_port *itr;
+    struct gpio_port *gpio_itr;
+
+    LIST_FOREACH(itr, &(ctx->port_list), port_next) {
+        if (itr->port_type != PORT_TYPE_GPIO)
+            continue;
+
+        gpio_itr = (struct gpio_port*) itr;
+
+        if (gpio_itr->probe_state == PROBE_DOWN_DONE) {
+            if (gpio_update_port(itr, CMD_ENABLE)) {
+                USB_DEBUG_PRINT_SYSLOG(gpio_itr->ctx, LOG_INFO, "Failed to "
+                                       "enable port %s\n", gpio_itr->gpio_path);
+                usb_helpers_start_timeout(itr, GPIO_TIMEOUT_PROBE_DISABLE_SEC);
+            } else {
+                USB_DEBUG_PRINT_SYSLOG(gpio_itr->ctx, LOG_INFO, "Probing port "
+                                       "%s\n", gpio_itr->gpio_path);
+                gpio_itr->probe_state = PROBE_UP;
+                usb_helpers_start_timeout(itr, GPIO_TIMEOUT_PROBE_ENABLE_SEC);
+            }
+
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static void gpio_on_probe_down_done(struct gpio_port *port)
 {
     struct usb_port *itr;
@@ -163,29 +195,9 @@ static void gpio_on_probe_down_done(struct gpio_port *port)
     USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "All ports down, ready to "
             "start probe\n");
 
-    //TODO: Move to function, will also be called when timeout expires for
-    //PROBE_UP/device is attached
-    LIST_FOREACH(itr, &(port->ctx->port_list), port_next) {
-        if (itr->port_type != PORT_TYPE_GPIO)
-            continue;
-
-        gpio_itr = (struct gpio_port*) itr;
-
-        if (gpio_itr->probe_state == PROBE_DOWN_DONE) {
-            if (gpio_update_port(itr, CMD_ENABLE)) {
-                USB_DEBUG_PRINT_SYSLOG(gpio_itr->ctx, LOG_INFO, "Failed to "
-                                       "enable port %s\n", gpio_itr->gpio_path);
-                usb_helpers_start_timeout(itr, GPIO_TIMEOUT_PROBE_DISABLE_SEC);
-            } else {
-                USB_DEBUG_PRINT_SYSLOG(gpio_itr->ctx, LOG_INFO, "Probing port "
-                                       "%s\n", gpio_itr->gpio_path);
-                gpio_itr->probe_state = PROBE_UP;
-                usb_helpers_start_timeout(itr, GPIO_TIMEOUT_PROBE_ENABLE_SEC);
-            }
-
-            break;
-        }
-    }
+    //No need to check return value, we know there is always at least one port
+    //to enable
+    gpio_probe_enable_port(port->ctx);
 }
 
 static void gpio_on_probe_timeout(struct gpio_port *port)
@@ -479,8 +491,14 @@ void gpio_handler_handle_probe_connect(struct usb_port *port)
                                " %s\n", g_port->gpio_path);
         usb_monitor_lists_del_timeout(port);
         g_port->probe_state = PROBE_DONE;
+        
         //Probe next port
+        if (!gpio_probe_enable_port(port->ctx)) {
+            USB_DEBUG_PRINT_SYSLOG(g_port->ctx, LOG_INFO, "Done with "
+                                   "probing\n");
 
+            //Restart all ports?
+        }
         return;
     }
 
