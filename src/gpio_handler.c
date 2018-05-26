@@ -436,12 +436,12 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
             if (gpio_num) {
                 USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
                                        "Read following GPIO from config %s (%u)"
-                                       "on: %u off: %u\n", path_org, gpio_num,
+                                       " on: %u off: %u\n", path_org, gpio_num,
                                        on_val, off_val);
             } else {
                  USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
                                        "Read following GPIO from config %s (%s)"
-                                       "on: %u off: %u\n", path_org, gpio_path,
+                                       " on: %u off: %u\n", path_org, gpio_path,
                                        on_val, off_val);
             }
             free(path);
@@ -610,6 +610,15 @@ void gpio_handler_handle_probe_connect(struct usb_port *port)
     USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Probed port:\n");
     gpio_print_port(itr);
     USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "\n");
+
+    //Also need to copy/reset the information about the current device
+    itr->vp.vid = port->vp.vid;
+    itr->vp.pid = port->vp.pid;
+    itr->status = port->status;
+    itr->dev = port->dev;
+
+    port->vp.vid = port->vp.pid = port->status = 0;
+    port->dev = NULL;
 
     usb_monitor_lists_del_timeout(itr);
     g_port->probe_state = PROBE_DONE;
