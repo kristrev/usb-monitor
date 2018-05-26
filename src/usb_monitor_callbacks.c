@@ -45,8 +45,10 @@ static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     usb_helpers_fill_port_array(dev, path, &path_len);
     port = usb_monitor_lists_find_port_path(ctx, path, path_len);
 
-    if (!port)
+    if (!port) {
+        fprintf(stderr, "No device found\n");
         return;
+    }
 
     //The enabled check is needed here sine we enable/disable async. So we can
     //process a disabled request before an add event. Of course, device will
