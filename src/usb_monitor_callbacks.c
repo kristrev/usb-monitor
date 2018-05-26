@@ -46,19 +46,24 @@ static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     port = usb_monitor_lists_find_port_path(ctx, path, path_len);
 
     if (!port) {
+        fprintf(stderr, "NO MATCH\n");
         return;
     }
 
     //The enabled check is needed here sine we enable/disable async. So we can
     //process a disabled request before an add event. Of course, device will
     //most likely be remove in the next iteration of loop, but still ...
-    if (port->msg_mode == RESET || !port->enabled)
+    if (port->msg_mode == RESET || !port->enabled) {
+        fprintf(stderr, "%u %u\n", port->msg_mode, port->enabled);
         return;
+    }
 
     //Need to check port if it already has a device, since we can risk that we
     //are called two times for one device
-    if (port->dev && port->dev == dev)
+    if (port->dev && port->dev == dev) {
+        fprintf(stderr, "Device seen\n");
         return;
+    }
 
     USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
             "Device: %.4x:%.4x added\n", desc.idVendor, desc.idProduct);
