@@ -80,6 +80,7 @@ static int32_t gpio_update_port(struct usb_port *port, uint8_t cmd)
     //TODO: If I am probing, start timer and return
 
     if (cmd == CMD_ENABLE) {
+        return -1;
         if (gpio_write_value(gport, gport->on_val) <= 0)
             return -1;
 
@@ -155,7 +156,7 @@ static void gpio_on_probe_down_done(struct gpio_port *port)
         if (gpio_itr->vp.vid || gpio_itr->vp.pid) {
             USB_DEBUG_PRINT_SYSLOG(gpio_itr->ctx, LOG_INFO, "Port %s still has "
                                    "device connected\n", gpio_itr->gpio_path);
-            usb_helpers_start_timeout(itr, GPIO_TIMEOUT_SLEEP_SEC);
+            usb_helpers_start_timeout(itr, GPIO_TIMEOUT_PROBE_DISABLE_SEC);
             return;
         }
     }
@@ -175,12 +176,12 @@ static void gpio_on_probe_down_done(struct gpio_port *port)
             if (gpio_update_port(itr, CMD_ENABLE)) {
                 USB_DEBUG_PRINT_SYSLOG(gpio_itr->ctx, LOG_INFO, "Failed to "
                                        "enable port %s\n", gpio_itr->gpio_path);
-                usb_helpers_start_timeout(itr, GPIO_TIMEOUT_SLEEP_SEC);
+                usb_helpers_start_timeout(itr, GPIO_TIMEOUT_PROBE_DISABLE_SEC);
             } else {
                 USB_DEBUG_PRINT_SYSLOG(gpio_itr->ctx, LOG_INFO, "Probing port "
                                        "%s\n", gpio_itr->gpio_path);
                 gpio_itr->probe_state = PROBE_UP;
-                usb_helpers_start_timeout(itr, GPIO_TIMEOUT_PROBE_SEC);
+                usb_helpers_start_timeout(itr, GPIO_TIMEOUT_PROBE_ENABLE_SEC);
             }
 
             break;
@@ -460,7 +461,8 @@ int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx)
     //timer is used as a global timer for GPIO, but the timer is actually tied
     //to only one port. The code works because access to ports is serialized
     //while probing, but the structure is a bit confusing
-    usb_helpers_start_timeout((struct usb_port*) port, GPIO_TIMEOUT_SLEEP_SEC);
+    usb_helpers_start_timeout((struct usb_port*) port,
+                              GPIO_TIMEOUT_PROBE_DISABLE_SEC);
 
     return 0;
 }
