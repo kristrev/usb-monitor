@@ -623,7 +623,7 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
             !json_object_array_length(path_array) ||
             (!gpio_num && !gpio_path) ||
             (gpio_num && gpio_path)) {
-            fprintf(stderr, "%u %u %u %u %u\n", unknown, path_array == NULL, !json_object_array_length(path_array), (!gpio_num && !gpio_path), (gpio_num && gpio_path));
+            fprintf(stderr, "%u %u %u %u %u\n", unknown, path_array == NULL, path_array && !json_object_array_length(path_array), (!gpio_num && !gpio_path), (gpio_num && gpio_path);
             return 1;
         }
         
