@@ -152,7 +152,7 @@ static void gpio_on_probe_down_done(struct gpio_port *port)
 
         gpio_itr = (struct gpio_port*) itr;
 
-        if (!gpio_itr->vp.vid || gpio_itr->vp.pid) {
+        if (gpio_itr->vp.vid || gpio_itr->vp.pid) {
             USB_DEBUG_PRINT_SYSLOG(gpio_itr->ctx, LOG_INFO, "Port %s still has "
                                    "device connected\n", gpio_itr->gpio_path);
             usb_helpers_start_timeout(itr, GPIO_TIMEOUT_SLEEP_SEC);
