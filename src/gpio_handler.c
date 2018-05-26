@@ -31,7 +31,13 @@
 
 static void gpio_print_port(struct usb_port *port)
 {
-    usb_helpers_print_port(port, "GPIO");
+    struct gpio_port *g_port = (struct gpio_port *) port;
+
+    if (g_port->gpio_path) {
+        usb_helpers_print_port(port, "GPIO", g_port->gpio_path);
+    } else {
+        usb_helpers_print_port(port, "GPIO", NULL);
+    }
 }
 
 static ssize_t gpio_write_value(struct gpio_port *gport, uint8_t gpio_val)
@@ -248,7 +254,7 @@ static struct gpio_port* gpio_handler_get_port(struct usb_monitor_ctx *ctx,
 }
 
 static struct gpio_port* gpio_handler_create_port(struct usb_monitor_ctx *ctx,
-        uint8_t gpio_num, uint8_t on_val, uint8_t off_val, const char *gpio_path)
+        uint16_t gpio_num, uint8_t on_val, uint8_t off_val, const char *gpio_path)
 {
     struct gpio_port *port = calloc(sizeof(struct gpio_port), 1);
 
@@ -265,6 +271,7 @@ static struct gpio_port* gpio_handler_create_port(struct usb_monitor_ctx *ctx,
     port->on_val = on_val;
     port->off_val = off_val;
     port->gpio_path = gpio_path;
+    port->gpio_num = gpio_num;
 
     return port;
 }
@@ -301,7 +308,7 @@ static uint8_t gpio_handler_add_port_gpio_path(struct usb_monitor_ctx *ctx,
 }
 
 static uint8_t gpio_handler_add_port_gpio_num(struct usb_monitor_ctx *ctx,
-        uint8_t gpio_num, const char *dev_path_ptr,
+        uint16_t gpio_num, const char *dev_path_ptr,
         uint8_t dev_path_len)
 {
     struct gpio_port *port;
@@ -370,7 +377,7 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
     char *path;
     const char *path_org, *gpio_path = NULL;
     int i, j;
-    uint8_t gpio_num = 0; 
+    uint16_t gpio_num = 0; 
     uint8_t on_val = GPIO_DEFAULT_ON_VAL;
     uint8_t off_val = GPIO_DEFAULT_OFF_VAL;
     uint8_t unknown = 0;
@@ -426,9 +433,17 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
                 return 1;
             }
 
-            USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
-                                   "Read following GPIO from config %s (%u) on: %u off: %u\n",
-                                   path_org, gpio_num, on_val, off_val);
+            if (gpio_num) {
+                USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
+                                       "Read following GPIO from config %s (%u)"
+                                       "on: %u off: %u\n", path_org, gpio_num,
+                                       on_val, off_val);
+            } else {
+                 USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
+                                       "Read following GPIO from config %s (%s)"
+                                       "on: %u off: %u\n", path_org, gpio_path,
+                                       on_val, off_val);
+            }
             free(path);
         }
     }
@@ -554,6 +569,7 @@ void gpio_handler_handle_probe_connect(struct usb_port *port)
     gpio_print_port(port);
     USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Probed port:\n");
     gpio_print_port(itr);
+    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "\n");
 
     //Move from the port we matched on to temporary, and NULL original
     for (i = 0; i < MAX_NUM_PATHS; i++) {
@@ -593,6 +609,7 @@ void gpio_handler_handle_probe_connect(struct usb_port *port)
     gpio_print_port(port);
     USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Probed port:\n");
     gpio_print_port(itr);
+    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "\n");
 
     usb_monitor_lists_del_timeout(itr);
     g_port->probe_state = PROBE_DONE;

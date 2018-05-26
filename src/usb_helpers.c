@@ -65,7 +65,8 @@ void usb_helpers_release_port(struct usb_port *port)
     }
 }
 
-void usb_helpers_print_port(struct usb_port *port, const char *type)
+void usb_helpers_print_port(struct usb_port *port, const char *type,
+                            const char *prefix)
 {
     int i, j;
     struct libusb_device_descriptor desc;
@@ -98,14 +99,30 @@ void usb_helpers_print_port(struct usb_port *port, const char *type)
 
     if (port->dev) {
         libusb_get_device_descriptor(port->dev, &desc);
-        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO,
-                "Type %s Path: %s State %u Pwr: %u Device: %.4x:%.4x\n",
-                type, path_buf, port->status, port->pwr_state, desc.idVendor,
-                desc.idProduct);
+        if (prefix) {
+            USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO,
+                                   "Type %s %s Path: %s State %u Pwr: %u "
+                                   "Device: %.4x:%.4x\n", type, prefix,
+                                   path_buf, port->status, port->pwr_state,
+                                   desc.idVendor, desc.idProduct);
+        } else {
+            USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO,
+                                   "Type %s Path: %s State %u Pwr: %u Device: "
+                                   "%.4x:%.4x\n", type, path_buf, port->status,
+                                   port->pwr_state, desc.idVendor,
+                                   desc.idProduct);
+        }
     } else {
-         USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO,
-                "Type %s Path: %s State %u Pwr: %u\n",
-                type, path_buf, port->status, port->pwr_state);
+        if (prefix) {
+            USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Type %s %s Path: %s "
+                                   "State %u Pwr: %u\n", type, prefix, path_buf,
+                                   port->status, port->pwr_state);
+
+        } else {
+            USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Type %s Path: %s "
+                                   "State %u Pwr: %u\n", type, path_buf,
+                                   port->status, port->pwr_state);
+        }
     }
 }
 

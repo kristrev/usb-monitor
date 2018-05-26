@@ -34,7 +34,8 @@ uint8_t usb_helpers_port_add_path(struct usb_port *port, const char *path,
                                   uint8_t path_len);
 
 //Generic output function for a usb port
-void usb_helpers_print_port(struct usb_port *port, const char *type);
+void usb_helpers_print_port(struct usb_port *port, const char *type,
+                            const char *prefix);
 
 //Get the per-port power switching value
 int8_t usb_helpers_get_power_switch(struct usb_monitor_ctx *ctx,

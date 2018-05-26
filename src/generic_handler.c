@@ -28,7 +28,7 @@
 
 static void generic_print_port(struct usb_port *port)
 {
-    usb_helpers_print_port(port, "Generic");
+    usb_helpers_print_port(port, "Generic", NULL);
 }
 
 static void generic_update_cb(struct libusb_transfer *transfer)

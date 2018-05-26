@@ -39,6 +39,7 @@ enum {
 struct gpio_port {
     USB_PORT_MANDATORY;
     const char *gpio_path;
+    uint16_t gpio_num;
     uint8_t on_val;
     uint8_t off_val;
     uint8_t probe_state;
