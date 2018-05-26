@@ -46,7 +46,6 @@ static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     port = usb_monitor_lists_find_port_path(ctx, path, path_len);
 
     if (!port) {
-        fprintf(stderr, "No device found\n");
         return;
     }
 

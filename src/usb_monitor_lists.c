@@ -66,6 +66,9 @@ struct usb_port *usb_monitor_lists_find_port_path(struct usb_monitor_ctx *ctx,
             if (!itr->path[i])
                 break;
 
+            fprintf(stderr, "%u %u\n", itr->path_len[i], path_len);
+            fprintf(stderr, "%s %s\n", itr->path[i], path);
+
             if ((itr->path_len[i] == path_len) &&
                 (!memcmp(itr->path[i], path, path_len)))
                 return itr;
