@@ -256,6 +256,7 @@ static void gpio_handle_probe_down_2(struct gpio_port *port)
 {
     USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Probing port %s disabled after"
                            " PROBE_UP timeout\n", port->gpio_path);
+    port->probe_state = PROBE_DONE;
 
     if (!gpio_probe_enable_port(port->ctx)) {
         gpio_handler_handle_probe_done(port->ctx);
