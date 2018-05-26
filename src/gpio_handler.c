@@ -253,10 +253,26 @@ static void gpio_handler_restart_all_ports(struct usb_monitor_ctx *ctx)
 
 static void gpio_handler_handle_probe_done(struct usb_monitor_ctx *ctx)
 {
-    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Done with probing\n");
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Done with probing + writing conf\n");
     //Restart all ports, so that we can handle devices
     gpio_handler_restart_all_ports(ctx);
-    //Write configuration to file
+}
+
+static void gpio_write_config(struct gpio_port *port)
+{
+    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Will write port mapping to "
+                           "file\n");
+    //Create config and write to file
+    
+    //if writing fails, set state to write file and start timer
+    if (1) {
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Writing mapping failed\n");
+        port->probe_state = PROBE_WRITE_FILE;
+        usb_helpers_start_timeout((struct usb_port*) port,
+                GPIO_TIMEOUT_PROBE_DISABLE_SEC);
+    } else {
+        gpio_handler_handle_probe_done(port->ctx);
+    }
 }
 
 static void gpio_handle_probe_down_2(struct gpio_port *port)
@@ -266,7 +282,7 @@ static void gpio_handle_probe_down_2(struct gpio_port *port)
     port->probe_state = PROBE_DONE;
 
     if (!gpio_probe_enable_port(port->ctx)) {
-        gpio_handler_handle_probe_done(port->ctx);
+        gpio_write_config(port);
     }
 }
 
@@ -280,6 +296,8 @@ static void gpio_on_probe_timeout(struct gpio_port *port)
         gpio_handle_probe_up_timeout(port);
     } else if (port->probe_state == PROBE_DOWN_2) {
         gpio_handle_probe_down_2(port); 
+    } else if (port->probe_state == PROBE_WRITE_FILE) {
+        gpio_write_config(port);
     }
 }
 
@@ -666,7 +684,7 @@ void gpio_handler_handle_probe_connect(struct usb_port *port)
         
         //Probe next port
         if (!gpio_probe_enable_port(port->ctx)) {
-            gpio_handler_handle_probe_done(port->ctx);
+            gpio_write_config(g_port);
         }
 
         return;
@@ -699,6 +717,6 @@ void gpio_handler_handle_probe_connect(struct usb_port *port)
     g_port->probe_state = PROBE_DONE;
 
     if (!gpio_probe_enable_port(port->ctx)) {
-        gpio_handler_handle_probe_done(port->ctx);
+        gpio_write_config(g_port);
     }
 }

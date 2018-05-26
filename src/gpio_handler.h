@@ -34,7 +34,8 @@ enum {
     PROBE_DOWN_DONE,
     PROBE_UP,
     PROBE_DOWN_2,
-    PROBE_DONE
+    PROBE_DONE,
+    PROBE_WRITE_FILE
 };
 
 struct gpio_port {
