@@ -592,11 +592,6 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
         json_port = json_object_array_get_idx(json, i); 
 
         json_object_object_foreach(json_port, key, val) {
-            fprintf(stderr, "KEY %s\n", key);
-            if (!strcmp(key, "path")) {
-                fprintf(stderr, "Array type: %u\n", json_object_get_type(val));
-            }
-
             if (!strcmp(key, "path") && json_object_is_type(val, json_type_array)) {
                 //USB path to match
                 path_array = val;
@@ -616,7 +611,7 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
             } else if (!strcmp(key, "gpio_path") && json_object_is_type(val, json_type_string)) {
                 //Custom path for GPIO like device (like modem on Glinet Mifi)
                 gpio_path = json_object_get_string(val);
-                break;
+                continue;
             } else {
                 unknown = 1;
                 break;
@@ -628,7 +623,6 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
             !json_object_array_length(path_array) ||
             (!gpio_num && !gpio_path) ||
             (gpio_num && gpio_path)) {
-            fprintf(stderr, "%u %u %u %u %u\n", unknown, path_array == NULL, path_array && !json_object_array_length(path_array), (!gpio_num && !gpio_path), (gpio_num && gpio_path));
             return 1;
         }
         
