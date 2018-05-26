@@ -241,8 +241,13 @@ static void gpio_handler_restart_all_ports(struct usb_monitor_ctx *ctx)
             continue;
         }
 
-        //No need to reset msg_mode, it is done in update_port
-        gpio_update_port(itr, CMD_RESTART);
+        if (!itr->enabled) {
+            itr->msg_mode = IDLE;
+            gpio_update_port(itr, CMD_ENABLE);
+        } else {
+            //No need to reset msg_mode, it is done in update_port
+            gpio_update_port(itr, CMD_RESTART);
+        }
     }
 }
 
