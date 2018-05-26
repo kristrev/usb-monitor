@@ -199,6 +199,12 @@ static uint8_t usb_monitor_client_update_ports(struct usb_monitor_ctx *ctx,
         if (port_ptr == NULL)
             continue;
 
+        if (port_ptr->port_type == PORT_TYPE_GPIO &&
+            port_ptr->msg_mode == PROBE) {
+            failure = 1;
+            break;
+        }
+
         if ((cmd == CMD_ENABLE && port_ptr->enabled) ||
             (cmd == CMD_DISABLE && !port_ptr->enabled))
             continue;
