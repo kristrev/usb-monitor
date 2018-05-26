@@ -80,7 +80,6 @@ static int32_t gpio_update_port(struct usb_port *port, uint8_t cmd)
     //TODO: If I am probing, start timer and return
 
     if (cmd == CMD_ENABLE) {
-        return -1;
         if (gpio_write_value(gport, gport->on_val) <= 0)
             return -1;
 
@@ -196,8 +195,8 @@ static void gpio_on_probe_timeout(struct gpio_port *port)
         port->probe_state = PROBE_DOWN_DONE;
         gpio_on_probe_down_done(port);
     } else if (port->probe_state == PROBE_UP) {
-        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Probeing port "
-                               "%s timed out\n", port->gpio_path);
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Probing port %s timed out"
+                               "\n", port->gpio_path);
     }
 }
 
@@ -465,4 +464,47 @@ int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx)
                               GPIO_TIMEOUT_PROBE_DISABLE_SEC);
 
     return 0;
+}
+
+
+void gpio_handler_handle_probe_connect(struct usb_port *port)
+{
+    struct usb_port *itr;
+    struct gpio_port *g_port = (struct gpio_port*) port;
+
+    //If the device connected maps to the port we are probing, mapping is
+    //correct
+    if (g_port->probe_state == PROBE_UP) {
+        USB_DEBUG_PRINT_SYSLOG(g_port->ctx, LOG_INFO, "Path mapping correct for"
+                               " %s\n", g_port->gpio_path);
+        usb_monitor_lists_del_timeout(port);
+        g_port->probe_state = PROBE_DONE;
+        //Probe next port
+
+        return;
+    }
+
+#if 0
+    //Port is the port that matches the device path, NOT necessarily the port
+    //the we set as UP. Therefor, we need to find the port where probe_state is
+    //set to PROBE_UP. There can only be one port with state set to PROBE_UP
+    if (g_port->probe_state != PROBE_UP) {
+        g_port = NULL;
+
+        LIST_FOREACH(itr, &(port->ctx->port_list), port_next) {
+            if (itr->port_type != PORT_TYPE_GPIO)
+                continue;
+
+            g_port = (struct gpio_port*) itr;
+
+            if (g_port->probe_state == PROBE_UP) {
+                break;
+            }
+        }
+    } 
+
+    //Stop device connect timeout
+   
+    //Compare paths
+#endif
 }

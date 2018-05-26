@@ -27,6 +27,8 @@
 #include "generic_handler.h"
 #include "backend_event_loop.h"
 
+#include "gpio_handler.h"
+
 /* libusb-callbacks for when devices are added/removed. It is also called
  * manually when we detect a hub, since we risk devices being added before we
  * see for example the YKUSH HID device */
@@ -65,7 +67,6 @@ static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     port->vp.pid = desc.idProduct;
     port->status = PORT_DEV_CONNECTED;
     port->dev = dev;
-    port->msg_mode = PING;
     libusb_ref_device(dev);
 
     usb_monitor_print_ports(ctx);
@@ -73,7 +74,13 @@ static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     //Whenever we detect a device, we need to add to timeout to send ping.
     //However, we need to wait longer than the initial five seconds to let
     //usb_modeswitch potentially works its magic
-    usb_helpers_start_timeout(port, ADDED_TIMEOUT_SEC);
+    if (port->msg_mode == PROBE) {
+        //TODO: Generic callback
+        gpio_handler_handle_probe_connect(port);
+    } else {
+        port->msg_mode = PING;
+        usb_helpers_start_timeout(port, ADDED_TIMEOUT_SEC);
+    }
 }
 
 static void usb_device_removed(struct usb_monitor_ctx *ctx, libusb_device *dev)
