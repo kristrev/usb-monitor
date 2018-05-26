@@ -258,10 +258,120 @@ static void gpio_handler_handle_probe_done(struct usb_monitor_ctx *ctx)
     gpio_handler_restart_all_ports(ctx);
 }
 
+static struct json_object* gpio_create_mapping_json(struct usb_monitor_ctx *ctx)
+{
+    struct json_object *config_obj, *obj_add, *obj_arr, *obj_port, *obj_paths;
+    char path_buf[MAX_USB_PATH];
+    uint8_t path_buf_len, i;
+    struct usb_port *itr;
+    struct gpio_port *g_itr;
+
+    config_obj = json_object_new_object();
+    if (!config_obj) {
+        return NULL;
+    }
+
+    obj_add = json_object_new_string("GPIO");
+    if (!obj_add) {
+        json_object_put(config_obj);
+        return NULL;
+    }
+    json_object_object_add(config_obj, "name", obj_add);
+
+    obj_arr = json_object_new_array();
+    if (!obj_arr) {
+        json_object_put(config_obj);
+        return NULL;
+    }
+    json_object_object_add(config_obj, "ports", obj_arr);
+
+    LIST_FOREACH(itr, &(ctx->port_list), port_next) {
+        if (itr->port_type != PORT_TYPE_GPIO) {
+            continue;
+        }
+
+        g_itr = (struct gpio_port*) itr;
+
+        obj_port = json_object_new_object();
+        if (!obj_port) {
+            json_object_put(config_obj);
+            return NULL;
+        }
+        json_object_array_add(obj_arr, obj_port);
+
+        obj_add = json_object_new_string(g_itr->gpio_path);
+        if (!obj_add) {
+            json_object_put(config_obj);
+            return NULL;
+        }
+        json_object_object_add(obj_port, "gpio_path", obj_add);
+
+        if (g_itr->on_val != GPIO_DEFAULT_ON_VAL) {
+            obj_add = json_object_new_int(g_itr->on_val);
+            if (!obj_add) {
+                json_object_put(config_obj);
+                return NULL;
+            }
+            json_object_object_add(obj_port, "on_val", obj_add);
+        }
+
+        if (g_itr->off_val != GPIO_DEFAULT_OFF_VAL) {
+            obj_add = json_object_new_int(g_itr->off_val);
+            if (!obj_add) {
+                json_object_put(config_obj);
+                return NULL;
+            }
+            json_object_object_add(obj_port, "off_val", obj_add);
+        }
+
+        obj_paths = json_object_new_array();
+        if (!obj_paths) {
+            json_object_put(config_obj);
+            return NULL;
+        }
+        json_object_object_add(obj_port, "path", obj_paths);
+
+        for (i = 0; i < MAX_NUM_PATHS; i++) {
+            if (!itr->path[i]) {
+                break;
+            }
+
+            usb_helpers_convert_path_char(itr, path_buf, &path_buf_len, i);
+
+            obj_add = json_object_new_string_len(path_buf, path_buf_len);
+            if (!obj_add) {
+                json_object_put(config_obj);
+                return NULL;
+            }
+            json_object_array_add(obj_paths, obj_add);
+        }
+    }
+
+    return config_obj;
+}
+
 static void gpio_write_config(struct gpio_port *port)
 {
+    struct json_object *config_obj;
+    const char *config_json_str;
+
     USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Will write port mapping to "
                            "file\n");
+
+    if (!(config_obj = gpio_create_mapping_json(port->ctx))) {
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Creating mapping JSON "
+                                                    "failed\n");
+        port->probe_state = PROBE_WRITE_FILE;
+        usb_helpers_start_timeout((struct usb_port*) port,
+                GPIO_TIMEOUT_PROBE_DISABLE_SEC);
+        return;
+    }
+
+    config_json_str = json_object_to_json_string_ext(config_obj,
+                                                     JSON_C_TO_STRING_PLAIN);
+
+    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Will write: %s\n",
+                           config_json_str);
     //Create config and write to file
     
     //if writing fails, set state to write file and start timer
@@ -273,6 +383,8 @@ static void gpio_write_config(struct gpio_port *port)
     } else {
         gpio_handler_handle_probe_done(port->ctx);
     }
+
+    json_object_put(config_obj);
 }
 
 static void gpio_handle_probe_down_2(struct gpio_port *port)
