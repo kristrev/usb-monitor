@@ -46,27 +46,36 @@ static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     port = usb_monitor_lists_find_port_path(ctx, path, path_len);
 
     if (!port) {
-        fprintf(stderr, "NO MATCH\n");
         return;
     }
 
     //The enabled check is needed here sine we enable/disable async. So we can
     //process a disabled request before an add event. Of course, device will
     //most likely be remove in the next iteration of loop, but still ...
-    if (port->msg_mode == RESET || !port->enabled) {
-        fprintf(stderr, "%u %u\n", port->msg_mode, port->enabled);
+    //
+    //enabled need one modification though. If we have the incorrect port
+    //mapping, the port that originally matches the port might be disabled
+    //(switched off). So if we are probing, we will always accept port
+    if (port->msg_mode != PROBE &&
+        (port->msg_mode == RESET || !port->enabled)) {
         return;
     }
 
     //Need to check port if it already has a device, since we can risk that we
     //are called two times for one device
     if (port->dev && port->dev == dev) {
-        fprintf(stderr, "Device seen\n");
         return;
     }
 
-    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
-            "Device: %.4x:%.4x added\n", desc.idVendor, desc.idProduct);
+    if (port->msg_mode == PROBE) {
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
+                               "Device: %.4x:%.4x added (probe)\n",
+                               desc.idVendor, desc.idProduct);
+    } else {
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
+                               "Device: %.4x:%.4x added\n", desc.idVendor,
+                               desc.idProduct);
+    }
 
     //We need to configure port. So far, this is all generic
     port->vp.vid = desc.idVendor;
