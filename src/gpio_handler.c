@@ -163,7 +163,29 @@ static void gpio_on_probe_down_done(struct gpio_port *port)
     USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "All ports down, ready to "
             "start probe\n");
 
-    //Start setting ports up
+    //TODO: Move to function, will also be called when timeout expires for
+    //PROBE_UP/device is attached
+    LIST_FOREACH(itr, &(port->ctx->port_list), port_next) {
+        if (itr->port_type != PORT_TYPE_GPIO)
+            continue;
+
+        gpio_itr = (struct gpio_port*) itr;
+
+        if (gpio_itr->probe_state == PROBE_DOWN_DONE) {
+            if (gpio_update_port(itr, CMD_ENABLE)) {
+                USB_DEBUG_PRINT_SYSLOG(gpio_itr->ctx, LOG_INFO, "Failed to "
+                                       "enable port %s\n", gpio_itr->gpio_path);
+                usb_helpers_start_timeout(itr, GPIO_TIMEOUT_SLEEP_SEC);
+            } else {
+                USB_DEBUG_PRINT_SYSLOG(gpio_itr->ctx, LOG_INFO, "Probing port "
+                                       "%s\n", gpio_itr->gpio_path);
+                gpio_itr->probe_state = PROBE_UP;
+                usb_helpers_start_timeout(itr, GPIO_TIMEOUT_PROBE_SEC);
+            }
+
+            break;
+        }
+    }
 }
 
 static void gpio_on_probe_timeout(struct gpio_port *port)
@@ -172,6 +194,9 @@ static void gpio_on_probe_timeout(struct gpio_port *port)
         port->probe_state == PROBE_DOWN_DONE) {
         port->probe_state = PROBE_DOWN_DONE;
         gpio_on_probe_down_done(port);
+    } else if (port->probe_state == PROBE_UP) {
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Probeing port "
+                               "%s timed out\n", port->gpio_path);
     }
 }
 
