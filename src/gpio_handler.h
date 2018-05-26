@@ -24,7 +24,7 @@
 #define GPIO_DEFAULT_OFF_VAL            0
 #define GPIO_TIMEOUT_SLEEP_SEC          10
 #define GPIO_TIMEOUT_PROBE_DISABLE_SEC  5
-#define GPIO_TIMEOUT_PROBE_ENABLE_SEC   30
+#define GPIO_TIMEOUT_PROBE_ENABLE_SEC   10
 //64 is large anough to store maximum sysfs paths (/sys/class/gpio/gpioX/value)
 #define GPIO_PATH_MAX_LEN      64
 
@@ -33,6 +33,7 @@ enum {
     PROBE_DOWN,
     PROBE_DOWN_DONE,
     PROBE_UP,
+    PROBE_DOWN_2,
     PROBE_DONE
 };
 

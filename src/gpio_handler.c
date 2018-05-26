@@ -201,11 +201,38 @@ static void gpio_on_probe_down_done(struct gpio_port *port)
     }
 
     USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "All ports down, ready to "
-            "start probe\n");
+            "start probing\n");
 
     //No need to check return value, we know there is always at least one port
     //to enable
     gpio_probe_enable_port(port->ctx);
+}
+
+//Called when setting a port as UP during probing times out. Could be because
+//there is no device, or because something is wrong with the device. Anyway, we
+//need to disable the port to prevent device from appearing after probing is
+//done for this port and before continuing. Remember that we assume ports are
+//accessed one by one while probing
+static void gpio_handle_probe_up_timeout(struct gpio_port *port)
+{
+    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Probing port %s timed out\n",
+                           port->gpio_path);
+
+    //Set port as down
+    if (gpio_update_port((struct usb_port*) port, CMD_DISABLE)) {
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Port %s could not be "
+                               "disabled\n", port->gpio_path);
+    } else {
+        port->probe_state = PROBE_DOWN_2;
+    }
+
+    usb_helpers_start_timeout((struct usb_port*) port,
+                              GPIO_TIMEOUT_PROBE_DISABLE_SEC);
+}
+
+static void gpio_handle_probe_down_2(struct gpio_port *port)
+{
+    
 }
 
 static void gpio_on_probe_timeout(struct gpio_port *port)
@@ -215,8 +242,9 @@ static void gpio_on_probe_timeout(struct gpio_port *port)
         port->probe_state = PROBE_DOWN_DONE;
         gpio_on_probe_down_done(port);
     } else if (port->probe_state == PROBE_UP) {
-        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Probing port %s timed out"
-                               "\n", port->gpio_path);
+        gpio_handle_probe_up_timeout(port);
+    } else if (port->probe_state == PROBE_DOWN_2) {
+    
     }
 }
 
