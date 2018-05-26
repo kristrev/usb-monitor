@@ -354,6 +354,8 @@ static void gpio_write_config(struct gpio_port *port)
 {
     struct json_object *config_obj;
     const char *config_json_str;
+    FILE *mapping_file;
+    size_t retval;
 
     USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Will write port mapping to "
                            "file\n");
@@ -372,10 +374,20 @@ static void gpio_write_config(struct gpio_port *port)
 
     USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Will write: %s\n",
                            config_json_str);
-    //Create config and write to file
-    
-    //if writing fails, set state to write file and start timer
-    if (1) {
+
+    mapping_file = fopen(port->port_mapping_path, "w");
+    if (!mapping_file) {
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Opening mapping file "
+                                                    "failed\n");
+        port->probe_state = PROBE_WRITE_FILE;
+        usb_helpers_start_timeout((struct usb_port*) port,
+                GPIO_TIMEOUT_PROBE_DISABLE_SEC);
+        return;
+    }
+
+    retval = fwrite(config_json_str, 1, strlen(config_json_str), mapping_file);
+
+    if (retval != strlen(config_json_str)) {
         USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Writing mapping failed\n");
         port->probe_state = PROBE_WRITE_FILE;
         usb_helpers_start_timeout((struct usb_port*) port,
@@ -384,6 +396,7 @@ static void gpio_write_config(struct gpio_port *port)
         gpio_handler_handle_probe_done(port->ctx);
     }
 
+    fclose(mapping_file);
     json_object_put(config_obj);
 }
 
@@ -644,7 +657,8 @@ uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx,
     return 0;
 }
 
-int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx)
+int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx,
+                                 const char *port_mapping_path)
 {
     struct usb_port *itr;
     struct gpio_port *port = NULL;
@@ -666,6 +680,11 @@ int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx)
                                "Started probe for pin %s\n", port->gpio_path);
         port->probe_state = PROBE_DOWN;
         port->msg_mode = PROBE;
+
+        //Yet another argument for refactoring code and creating a GPIO handler,
+        //that will then contain all the ports. Storing the path in every object
+        //is ... not nice
+        port->port_mapping_path = port_mapping_path;
 
         //Timeout is started when we add a device (in order to run USB ping).
         //Stop timeout for all ports here. It is maybe not very elegant, but I

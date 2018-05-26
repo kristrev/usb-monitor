@@ -450,14 +450,14 @@ static uint8_t usb_monitor_configure(struct usb_monitor_ctx *ctx, uint8_t sock)
     return 0;
 }
 
-static int32_t usb_monitor_start_probe()
+static int32_t usb_monitor_start_probe(const char *probe_mapping_path)
 {
     struct usb_port *itr;
 
     LIST_FOREACH(itr, &(usbmon_ctx->port_list), port_next) {
         //If/when we adde more handlers, probing should be made a callback
         if (itr->port_type == PORT_TYPE_GPIO) {
-            return gpio_handler_start_probe(usbmon_ctx);
+            return gpio_handler_start_probe(usbmon_ctx, probe_mapping_path);
         }
     }
 
@@ -472,8 +472,9 @@ static void usb_monitor_print_usage()
     fprintf(stdout, "\t-g : group id of usb monitor socket (optional)\n");
     fprintf(stdout, "\t-d : run as daemon\n");
     fprintf(stdout, "\t-s : write to syslog\n");
-    fprintf(stdout, "\t-p : generate pin/port mapping dynamically (optional,"
-            " only GPIO for now, default is false)\n");
+    fprintf(stdout, "\t-p : generate pin/port mapping dynamically. This value "
+            "is set to the path of new mapping file (optional, only GPIO for "
+            "now, default is empty)\n");
     fprintf(stdout, "\t-h : this output\n");
 }
 
@@ -482,10 +483,9 @@ int main(int argc, char *argv[])
 {
     int retval = 0;
     uint8_t daemonize = 0;
-    char *conf_file_name = NULL;
+    char *conf_file_name = NULL, *probe_mapping_path = NULL;
     struct sigaction sig_handler;
     int32_t pid_fd, i;
-    uint8_t do_probe = 0;
 
     //We should only allow one running instance of usb_monitor
     pid_fd = open("/var/run/usb_monitor.pid", O_CREAT | O_RDWR | O_CLOEXEC, 0644);
@@ -507,7 +507,7 @@ int main(int argc, char *argv[])
 
     usbmon_ctx->logfile = stderr;
 
-    while ((retval = getopt(argc, argv, "o:c:g:dhsp")) != -1) {
+    while ((retval = getopt(argc, argv, "o:c:g:dhsp:")) != -1) {
         switch (retval) {
         case 'o':
             usbmon_ctx->logfile = fopen(optarg, "a+");
@@ -525,7 +525,7 @@ int main(int argc, char *argv[])
             usbmon_ctx->group_id = atoi(optarg);
             break;
         case 'p':
-            do_probe = 1;
+            probe_mapping_path = optarg;
             break;
         case 'h':
         default:
@@ -593,8 +593,8 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (do_probe) {
-        if (usb_monitor_start_probe()) {
+    if (probe_mapping_path) {
+        if (usb_monitor_start_probe(probe_mapping_path)) {
             exit(EXIT_FAILURE);
         }
     }

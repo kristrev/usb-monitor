@@ -41,6 +41,7 @@ enum {
 struct gpio_port {
     USB_PORT_MANDATORY;
     const char *gpio_path;
+    const char *port_mapping_path;
     uint16_t gpio_num;
     uint8_t on_val;
     uint8_t off_val;
@@ -51,7 +52,7 @@ struct json_object;
 
 uint8_t gpio_handler_parse_json(struct usb_monitor_ctx *ctx, struct json_object *json);
 
-int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx);
+int32_t gpio_handler_start_probe(struct usb_monitor_ctx *ctx, const char *probe_mapping_path);
 
 void gpio_handler_handle_probe_connect(struct usb_port *port);
 #endif
