@@ -33,7 +33,7 @@ static int32_t ykush_update_port(struct usb_port *port, uint8_t cmd);
 /* TODO: Parts of this function is generic, split in two */
 static void ykush_print_port(struct usb_port *port)
 {
-    usb_helpers_print_port(port, "YKUSH");
+    usb_helpers_print_port(port, "YKUSH", NULL);
 }
 
 static void ykush_enable_cb(struct libusb_transfer *transfer)

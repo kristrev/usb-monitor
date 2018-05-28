@@ -27,6 +27,8 @@
 #include "generic_handler.h"
 #include "backend_event_loop.h"
 
+#include "gpio_handler.h"
+
 /* libusb-callbacks for when devices are added/removed. It is also called
  * manually when we detect a hub, since we risk devices being added before we
  * see for example the YKUSH HID device */
@@ -43,29 +45,43 @@ static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     usb_helpers_fill_port_array(dev, path, &path_len);
     port = usb_monitor_lists_find_port_path(ctx, path, path_len);
 
-    if (!port)
+    if (!port) {
         return;
+    }
 
     //The enabled check is needed here sine we enable/disable async. So we can
     //process a disabled request before an add event. Of course, device will
     //most likely be remove in the next iteration of loop, but still ...
-    if (port->msg_mode == RESET || !port->enabled)
+    //
+    //enabled need one modification though. If we have the incorrect port
+    //mapping, the port that originally matches the port might be disabled
+    //(switched off). So if we are probing, we will always accept port
+    if (port->msg_mode != PROBE &&
+        (port->msg_mode == RESET || !port->enabled)) {
         return;
+    }
 
     //Need to check port if it already has a device, since we can risk that we
     //are called two times for one device
-    if (port->dev && port->dev == dev)
+    if (port->dev && port->dev == dev) {
         return;
+    }
 
-    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
-            "Device: %.4x:%.4x added\n", desc.idVendor, desc.idProduct);
+    if (port->msg_mode == PROBE) {
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
+                               "Device: %.4x:%.4x added (probe)\n",
+                               desc.idVendor, desc.idProduct);
+    } else {
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
+                               "Device: %.4x:%.4x added\n", desc.idVendor,
+                               desc.idProduct);
+    }
 
     //We need to configure port. So far, this is all generic
     port->vp.vid = desc.idVendor;
     port->vp.pid = desc.idProduct;
     port->status = PORT_DEV_CONNECTED;
     port->dev = dev;
-    port->msg_mode = PING;
     libusb_ref_device(dev);
 
     usb_monitor_print_ports(ctx);
@@ -73,7 +89,13 @@ static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     //Whenever we detect a device, we need to add to timeout to send ping.
     //However, we need to wait longer than the initial five seconds to let
     //usb_modeswitch potentially works its magic
-    usb_helpers_start_timeout(port, ADDED_TIMEOUT_SEC);
+    if (port->msg_mode == PROBE) {
+        //TODO: Generic callback
+        gpio_handler_handle_probe_connect(port);
+    } else {
+        port->msg_mode = PING;
+        usb_helpers_start_timeout(port, ADDED_TIMEOUT_SEC);
+    }
 }
 
 static void usb_device_removed(struct usb_monitor_ctx *ctx, libusb_device *dev)
@@ -138,9 +160,10 @@ static void usb_monitor_check_timeouts(struct usb_monitor_ctx *ctx)
 
             usb_monitor_lists_del_timeout(old_timeout);
 
-            //Due to async requests, this guard is needed to prevent us
-            //accidentaly sending PING on disabled port for example
-            if (old_timeout->enabled)
+            //Due to async requests, the enabled guard is needed to prevent us
+            //accidentaly sending PING on disabled port for example. However,
+            //in the case of probe, we need to call timeout callback
+            if (old_timeout->enabled || old_timeout->msg_mode == PROBE)
                 old_timeout->timeout(old_timeout);
         } else {
             timeout_itr = timeout_itr->timeout_next.le_next;

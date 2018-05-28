@@ -65,7 +65,8 @@ void usb_helpers_release_port(struct usb_port *port)
     }
 }
 
-void usb_helpers_print_port(struct usb_port *port, const char *type)
+void usb_helpers_print_port(struct usb_port *port, const char *type,
+                            const char *prefix)
 {
     int i, j;
     struct libusb_device_descriptor desc;
@@ -98,14 +99,30 @@ void usb_helpers_print_port(struct usb_port *port, const char *type)
 
     if (port->dev) {
         libusb_get_device_descriptor(port->dev, &desc);
-        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO,
-                "Type %s Path: %s State %u Pwr: %u Device: %.4x:%.4x\n",
-                type, path_buf, port->status, port->pwr_state, desc.idVendor,
-                desc.idProduct);
+        if (prefix) {
+            USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO,
+                                   "Type %s %s Path: %s State %u Pwr: %u "
+                                   "Device: %.4x:%.4x\n", type, prefix,
+                                   path_buf, port->status, port->pwr_state,
+                                   desc.idVendor, desc.idProduct);
+        } else {
+            USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO,
+                                   "Type %s Path: %s State %u Pwr: %u Device: "
+                                   "%.4x:%.4x\n", type, path_buf, port->status,
+                                   port->pwr_state, desc.idVendor,
+                                   desc.idProduct);
+        }
     } else {
-         USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO,
-                "Type %s Path: %s State %u Pwr: %u\n",
-                type, path_buf, port->status, port->pwr_state);
+        if (prefix) {
+            USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Type %s %s Path: %s "
+                                   "State %u Pwr: %u\n", type, prefix, path_buf,
+                                   port->status, port->pwr_state);
+
+        } else {
+            USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Type %s Path: %s "
+                                   "State %u Pwr: %u\n", type, path_buf,
+                                   port->status, port->pwr_state);
+        }
     }
 }
 
@@ -227,7 +244,7 @@ void usb_helpers_reset_port(struct usb_port *port)
     //RESET depends on timeout. If a reset message fails, device is moved
     //back to IDLE. If device is then removed, it will correctly be removed
     //from timeout as well
-    if (port->msg_mode != RESET &&
+    if ((port->msg_mode != RESET && port->msg_mode != PROBE) &&
         (port->timeout_next.le_next != NULL ||
         port->timeout_next.le_prev != NULL)) {
         usb_monitor_lists_del_timeout(port);
@@ -424,8 +441,8 @@ void usb_helpers_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t forced)
 
     LIST_FOREACH(itr, &(ctx->port_list), port_next) {
         //Only restart enabled ports which are not connected and are currently
-        //not being reset
-        if (itr->msg_mode == RESET || !itr->enabled)
+        //not being reset or probed
+        if (itr->msg_mode == RESET || !itr->enabled || itr->msg_mode == PROBE)
             continue;
 
         if (forced || itr->status == PORT_NO_DEV_CONNECTED ||
