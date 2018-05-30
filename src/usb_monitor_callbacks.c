@@ -184,12 +184,18 @@ void usb_monitor_usb_event_cb(void *ptr, int32_t fd, uint32_t events)
 void usb_monitor_check_devices_cb(void *ptr)
 {
     struct usb_monitor_ctx *ctx = ptr;
+	USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
+                "devices_cb\n");
+
     usb_helpers_check_devices(ctx);
 }
 
 void usb_monitor_check_reset_cb(void *ptr)
 {
     struct usb_monitor_ctx *ctx = ptr;
+	USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
+                "reset_cb\n");
+
     usb_helpers_reset_all_ports(ctx, 0);
 }
 
@@ -199,6 +205,9 @@ void usb_monitor_itr_cb(void *ptr)
 {
     struct usb_monitor_ctx *ctx = ptr;
     struct timeval tv = {0 ,0};
+
+	USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
+                "itr_cb\n");
 
     //First, check for any of libusb's timers. We are incontrol of timer, so no
     //need for this function to block
