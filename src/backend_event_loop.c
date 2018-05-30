@@ -19,7 +19,7 @@
 #include <sys/epoll.h>
 #include <string.h>
 #include <errno.h>
-#include <sys/time.h>
+#include <time.h>
 
 //Remove
 #include <stdio.h>
@@ -133,11 +133,11 @@ static void backend_event_loop_run_timers(struct backend_event_loop *del)
 {
     struct backend_timeout_handle *timeout = del->timeout_list.lh_first;
     struct backend_timeout_handle *cur_timeout;
-    struct timeval tv;
+    struct timespec tp;
     uint64_t cur_time;
 
-    gettimeofday(&tv, NULL);
-    cur_time = (tv.tv_sec * 1e3) + (tv.tv_usec / 1e3);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &tp);
+    cur_time = (tp.tv_sec * 1e3) + (tp.tv_nsec / 1e6);
 
     while (timeout != NULL) {
         if (timeout->timeout_clock <= cur_time) {
@@ -169,15 +169,15 @@ void backend_event_loop_run(struct backend_event_loop *del)
     struct epoll_event events[MAX_EPOLL_EVENTS];
     int nfds, i, sleep_time;
 
-    struct timeval tv;
+    struct timespec tp;
     uint64_t cur_time;
     struct backend_timeout_handle *timeout;
 
     while(1){
         usb_handle = NULL;
         timeout = del->timeout_list.lh_first;
-        gettimeofday(&tv, NULL);
-        cur_time = (tv.tv_sec * 1e3) + (tv.tv_usec / 1e3);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &tp);
+        cur_time = (tp.tv_sec * 1e3) + (tp.tv_nsec / 1e6);
        
         if (timeout != NULL) {
             if (cur_time > timeout->timeout_clock)

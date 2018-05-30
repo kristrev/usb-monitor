@@ -28,6 +28,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/epoll.h>
+#include <time.h>
 
 #include <json-c/json.h>
 #include <libusb-1.0/libusb.h>
@@ -243,12 +244,11 @@ static void usb_monitor_signal_handler(int signum)
 
 static void usb_monitor_start_event_loop(struct usb_monitor_ctx *ctx)
 {
-    struct timeval tv;
+    struct timespec tp;
     uint64_t cur_time;
 
-    gettimeofday(&tv, NULL);
-
-    cur_time = (tv.tv_sec * 1e3) + (tv.tv_usec / 1e3);
+    clock_gettime(CLOCK_MONOTONIC_RAW, &tp);
+    cur_time = (tp.tv_sec * 1e3) + (tp.tv_nsec / 1e6);
 
     //These timeout pointers will live for as long as the application.
     //Therefore, there is no need to save them anywhere
