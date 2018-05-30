@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include "usb_helpers.h"
 #include "usb_monitor.h"
@@ -216,10 +217,11 @@ uint8_t usb_helpers_get_num_ports(struct usb_monitor_ctx *ctx,
 
 void usb_helpers_start_timeout(struct usb_port *port, uint8_t timeout_sec)
 {
-    struct timeval tv;
+    struct timespec tp;
 
-    gettimeofday(&tv, NULL);
-    port->timeout_expire = ((tv.tv_sec + timeout_sec) * 1e6) + tv.tv_usec;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &tp);
+
+    port->timeout_expire = ((tp.tv_sec + timeout_sec) * 1e6) + (tp.tv_nsec/1e3);
     usb_monitor_lists_add_timeout(port->ctx, port);
 }
 

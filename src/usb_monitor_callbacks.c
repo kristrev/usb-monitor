@@ -18,6 +18,7 @@
 #include <stdint.h>
 #include <sys/epoll.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "usb_logging.h"
 #include "usb_monitor.h"
@@ -144,11 +145,11 @@ int usb_monitor_cb(libusb_context *ctx, libusb_device *device,
 static void usb_monitor_check_timeouts(struct usb_monitor_ctx *ctx)
 {
     struct usb_port *timeout_itr = NULL, *old_timeout = NULL;
-    struct timeval tv;
+    struct timespec tp;
     uint64_t cur_time;
 
-    gettimeofday(&tv, NULL);
-    cur_time = (tv.tv_sec * 1e6) + tv.tv_usec;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &tp);
+    cur_time = (tp.tv_sec * 1e6) + (tp.tv_nsec/1e3);
 
     timeout_itr = ctx->timeout_list.lh_first;
 
