@@ -23,6 +23,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <json-c/json.h>
+#include <errno.h>
 
 #include "gpio_handler.h"
 #include "usb_monitor_lists.h"
@@ -356,6 +357,7 @@ static void gpio_write_config(struct gpio_port *port)
     const char *config_json_str;
     FILE *mapping_file;
     size_t retval;
+    char mapping_file_path[GPIO_PROBE_PATH_LEN + 5] = {0};
 
     USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Will write port mapping to "
                            "file\n");
@@ -375,7 +377,12 @@ static void gpio_write_config(struct gpio_port *port)
     USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Will write: %s\n",
                            config_json_str);
 
-    mapping_file = fopen(port->port_mapping_path, "w");
+    //We ensure that mapping_file_path is within bounds when we read it from
+    //args
+    snprintf(mapping_file_path, sizeof(mapping_file_path), "%s.tmp",
+             port->port_mapping_path);
+
+    mapping_file = fopen(mapping_file_path, "w");
     if (!mapping_file) {
         USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Opening mapping file "
                                                     "failed\n");
@@ -392,12 +399,28 @@ static void gpio_write_config(struct gpio_port *port)
         port->probe_state = PROBE_WRITE_FILE;
         usb_helpers_start_timeout((struct usb_port*) port,
                 GPIO_TIMEOUT_PROBE_DISABLE_SEC);
-    } else {
-        gpio_handler_handle_probe_done(port->ctx);
+        fclose(mapping_file);
+        json_object_put(config_obj);
+        return;
     }
 
+    gpio_handler_handle_probe_done(port->ctx);
     fclose(mapping_file);
     json_object_put(config_obj);
+
+    if (link(mapping_file_path, port->port_mapping_path)) {
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Failed to link port map: "
+                "              %s\n", strerror(errno));
+        port->probe_state = PROBE_WRITE_FILE;
+        usb_helpers_start_timeout((struct usb_port*) port,
+                GPIO_TIMEOUT_PROBE_DISABLE_SEC);
+        return;
+    }
+
+    //This one shouldnt really fail. We are the creators, we know that the file
+    //exists and if someone else uses it then something very funky is going on.
+    //Though, we should still probably do something
+    unlink(mapping_file_path);
 }
 
 static void gpio_handle_probe_down_2(struct gpio_port *port)

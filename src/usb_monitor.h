@@ -34,6 +34,8 @@
 #define NUM_CONNECTIONS 1
 #define MAX_HTTP_CLIENTS 5
 
+#define GPIO_PROBE_PATH_LEN 127 //buffer size is 128 + 4 (.tmp)
+
 struct usb_port;
 struct backend_epoll_handle;
 struct backend_event_loop;
