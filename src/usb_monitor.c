@@ -594,6 +594,11 @@ int main(int argc, char *argv[])
     }
 
     if (probe_mapping_path) {
+        if (strlen(probe_mapping_path) > GPIO_PROBE_PATH_LEN) {
+            USB_DEBUG_PRINT_SYSLOG(usbmon_ctx, LOG_ERR, "Gpio probe path too long\n");
+            exit(EXIT_FAILURE);
+        }
+
         if (usb_monitor_start_probe(probe_mapping_path)) {
             exit(EXIT_FAILURE);
         }
