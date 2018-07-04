@@ -63,6 +63,10 @@ void usb_helpers_check_devices(struct usb_monitor_ctx *ctx);
 void usb_helpers_fill_port_array(struct libusb_device *dev, uint8_t *path,
                                  uint8_t *path_len);
 
+//Check if the port contains a bad id or not, return 0 if not, 1 if true
+uint8_t usb_helpers_check_bad_id(struct usb_monitor_ctx *ctx,
+                                 struct usb_port *port);
+
 //Reset ports. If forced is set, then restart thos with a device connected
 //as well
 void usb_helpers_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t forced);

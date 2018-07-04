@@ -418,8 +418,8 @@ void usb_helpers_convert_path_char(struct usb_port *port, char *output,
     *output_len = len;
 }
 
-static uint8_t usb_helpers_check_bad_id(struct usb_monitor_ctx *ctx,
-                                        struct usb_port *port)
+uint8_t usb_helpers_check_bad_id(struct usb_monitor_ctx *ctx,
+                                 struct usb_port *port)
 {
     uint32_t i;
 
@@ -447,8 +447,7 @@ void usb_helpers_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t forced)
         if (itr->msg_mode == RESET || !itr->enabled || itr->msg_mode == PROBE)
             continue;
 
-        if (forced || itr->status == PORT_NO_DEV_CONNECTED ||
-                usb_helpers_check_bad_id(ctx, itr))
+        if (forced || itr->status == PORT_NO_DEV_CONNECTED)
             itr->update(itr, CMD_RESTART);
     }
 }

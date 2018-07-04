@@ -96,6 +96,10 @@ static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     } else {
         port->msg_mode = PING;
         usb_helpers_start_timeout(port, ADDED_TIMEOUT_SEC);
+
+	if (usb_helpers_check_bad_id(ctx, port)) {
+		port->update(port, CMD_RESTART);
+	}
     }
 }
 
