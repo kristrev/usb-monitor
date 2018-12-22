@@ -38,7 +38,8 @@ static void lanner_handle_timeout(struct usb_port *port)
 }
 
 static uint8_t lanner_handler_add_port(struct usb_monitor_ctx *ctx,
-                                       char *dev_path, uint8_t bit)
+                                       char *dev_path, uint8_t bit,
+                                       struct lanner_shared *l_shared)
 {
     uint8_t dev_path_array[USB_PATH_MAX];
     const char *dev_path_ptr = (const char *) dev_path_array;
@@ -63,6 +64,7 @@ static uint8_t lanner_handler_add_port(struct usb_monitor_ctx *ctx,
     port->update = lanner_update_port;
     port->timeout = lanner_handle_timeout;
 
+    port->shared_info = l_shared;
     //This is the bitmask used to enable/disable the port. The reason bit is
     //not zero-indexed in config, is to be consistent with Lanner tools/doc
     port->bitmask = 1 << (bit - 1);
@@ -203,7 +205,7 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
                 return 1;
             }
 
-            if (lanner_handler_add_port(ctx, path, bit)) {
+            if (lanner_handler_add_port(ctx, path, bit, l_shared)) {
                 free(path);
                 lanner_handler_cleanup_shared(l_shared);
                 return 1;
