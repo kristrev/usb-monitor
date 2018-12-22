@@ -65,7 +65,7 @@ static uint8_t usb_monitor_parse_handlers(struct usb_monitor_ctx *ctx,
 {
     int handlers_len = 0, i;
     uint8_t unknown_elem = 0;
-    const char *handler_name = NULL;
+    const char *handler_name = NULL, *mcu_path = NULL;
     struct json_object *arr_obj, *handler_obj = NULL;
     
     handlers_len = json_object_array_length(handlers);
@@ -83,6 +83,10 @@ static uint8_t usb_monitor_parse_handlers(struct usb_monitor_ctx *ctx,
             } else if(!strcmp(key, "ports")) {
                 handler_obj = val;
                 continue;
+            } else if (!strcmp(key, "mcu_path")) {
+                //This value is only used by lanner and don't really belong in
+                //the main, generic object. Think of a better structure
+                mcu_path = json_object_get_string(val);
             } else {
                 unknown_elem = 1;
                 break;
@@ -99,7 +103,7 @@ static uint8_t usb_monitor_parse_handlers(struct usb_monitor_ctx *ctx,
                 return 1;
             }
         } else if (!strcmp("Lanner", handler_name)) {
-            if (lanner_handler_parse_json(ctx, handler_obj)) {
+            if (lanner_handler_parse_json(ctx, handler_obj, mcu_path)) {
                 return 1;
             }
         } else {

@@ -17,13 +17,16 @@ struct lanner_port {
     USB_PORT_MANDATORY;
     struct lanner_shared *shared_info;
     uint8_t bitmask;
-    //Lanner does not allow control of a single port, instead we must write the complete bitmask every time
+    //Lanner does not allow control of a single port, instead we must write
+    //the complete bitmask every time
     uint8_t cur_state;
 };
 
 struct usb_monitor_ctx;
 struct json_object;
 
-uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx, struct json_object *json);
+uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
+                                  struct json_object *json,
+                                  const char *mcu_path);
 
 #endif

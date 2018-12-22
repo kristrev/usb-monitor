@@ -124,15 +124,20 @@ static uint8_t lanner_handler_open_mcu(struct lanner_shared *l_shared)
 }
 
 uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
-                                  struct json_object *json)
+                                  struct json_object *json,
+                                  const char *mcu_path_org)
 {
     int json_arr_len = json_object_array_length(json);
     struct json_object *json_port, *path_array = NULL, *json_path;
     char *path, *mcu_path;
-    const char *path_org, *mcu_path_org = NULL;
+    const char *path_org;
     int i, j;
     uint8_t bit = UINT8_MAX, unknown_option = 0;
     struct lanner_shared *l_shared;
+
+    if (!mcu_path_org) {
+        return 1;
+    }
 
     for (i = 0; i < json_arr_len; i++) {
         json_port = json_object_array_get_idx(json, i); 
@@ -142,15 +147,13 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
                 path_array = val;
             } else if (!strcmp(key, "bit") && json_object_is_type(val, json_type_int)) {
                 bit = (uint8_t) json_object_get_int(val);
-            } else if (!strcmp(key, "mcu_path") && json_object_is_type(val, json_type_string)) {
-                mcu_path_org = json_object_get_string(val);
             } else {
                 unknown_option = 1;
                 break;
             }
         }
 
-        if (unknown_option || bit == UINT8_MAX || !path_array || !mcu_path_org
+        if (unknown_option || bit == UINT8_MAX || !path_array
             || !json_object_array_length(path_array)) {
             return 1;
         }
