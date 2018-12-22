@@ -24,7 +24,12 @@ static int32_t lanner_update_port(struct usb_port *port, uint8_t cmd)
 
 static void lanner_handle_timeout(struct usb_port *port)
 {
-    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Timeout\n");
+    if (port->msg_mode == PING) {
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Sending ping\n");
+        usb_helpers_send_ping(port);
+    } else {
+        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Timeout\n");
+    }
 }
 
 static uint8_t lanner_handler_add_port(struct usb_monitor_ctx *ctx,
