@@ -139,6 +139,30 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
         return 1;
     }
 
+    if (!(mcu_path = strdup(mcu_path_org))) {
+        return 1;
+    }
+
+    l_shared = calloc(sizeof(struct lanner_shared), 1);
+
+    if (!l_shared) {
+        free(mcu_path);
+        return 1;
+    }
+
+    l_shared->mcu_path = mcu_path;
+
+    if (lanner_handler_open_mcu(l_shared)) {
+        free(mcu_path);
+        free(l_shared);
+        return 1;
+    }
+
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Lanner shared info. Path: %s "
+                           "FD: %d\n", l_shared->mcu_path,
+                           l_shared->mcu_fd);
+
+
     for (i = 0; i < json_arr_len; i++) {
         json_port = json_object_array_get_idx(json, i); 
 
@@ -158,29 +182,6 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
             return 1;
         }
        
-        if (!(mcu_path = strdup(mcu_path_org))) {
-            return 1;
-        }
-
-        l_shared = calloc(sizeof(struct lanner_shared), 1);
-
-        if (!l_shared) {
-            free(mcu_path);
-            return 1;
-        }
-
-        l_shared->mcu_path = mcu_path;
-
-        if (lanner_handler_open_mcu(l_shared)) {
-            free(mcu_path);
-            free(l_shared);
-            return 1;
-        }
-
-        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Lanner shared info. Path: %s "
-                               "FD: %d\n", l_shared->mcu_path,
-                               l_shared->mcu_fd);
-
         for (j = 0; j < json_object_array_length(path_array); j++) {
             json_path = json_object_array_get_idx(path_array, j);
             path_org = json_object_get_string(json_path);
