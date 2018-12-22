@@ -44,6 +44,7 @@
 #include "usb_monitor_callbacks.h"
 #include "socket_utility.h"
 #include "usb_monitor_client.h"
+#include "lanner_handler.h"
 
 //Kept global so that I can access it from the signal handler
 static struct usb_monitor_ctx *usbmon_ctx = NULL;
@@ -94,8 +95,13 @@ static uint8_t usb_monitor_parse_handlers(struct usb_monitor_ctx *ctx,
         }
 
         if (!strcmp("GPIO", handler_name)) {
-            if (gpio_handler_parse_json(ctx, handler_obj))
+            if (gpio_handler_parse_json(ctx, handler_obj)) {
                 return 1;
+            }
+        } else if (!strcmp("Lanner", handler_name)) {
+            if (lanner_handler_parse_json(ctx, handler_obj)) {
+                return 1;
+            }
         } else {
             fprintf(stderr, "Unknown handler in JSON\n");
             return 1;

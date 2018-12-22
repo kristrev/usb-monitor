@@ -49,7 +49,8 @@ typedef void (*handle_timeout)(struct usb_port *port);
 enum {
     PORT_TYPE_UNKNOWN = 0,
     PORT_TYPE_GPIO,
-    PORT_TYPE_YKUSH
+    PORT_TYPE_YKUSH,
+    PORT_TYPE_LANNER
 };
 
 //The device pointed to here is the device that will be used for comparison when

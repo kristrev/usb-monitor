@@ -33,6 +33,7 @@ add_executable(usb_monitor
                generic_handler.c
                ykush_handler.c
                gpio_handler.c
+               lanner_handler.c
                backend_event_loop.c
                socket_utility.c
                http_parser.c
