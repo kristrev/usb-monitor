@@ -1,5 +1,11 @@
 #include <json-c/json.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <termios.h>
+#include <unistd.h>
+#include <errno.h>
 
 #include "usb_monitor.h"
 #include "usb_logging.h"
@@ -75,15 +81,58 @@ static uint8_t lanner_handler_add_port(struct usb_monitor_ctx *ctx,
     return 0;
 }
 
+static uint8_t lanner_handler_open_mcu(struct lanner_shared *l_shared)
+{
+    int fd = open(l_shared->mcu_path, O_RDWR | O_CLOEXEC), retval;
+    struct termios mcu_attr;
+
+    if (fd == -1) {
+        fprintf(stderr, "Failed to open file: %s (%d)\n", strerror(errno),
+                errno);
+        return 1;
+    }
+
+    //Baud rate is 57600 according to documentation
+    retval = tcgetattr(fd, &mcu_attr); 
+
+    if (retval) {
+        fprintf(stderr, "Fetching terminal attributes failed: %s (%d)\n",
+                strerror(errno), errno);
+        close(fd);
+        return 1;
+    }
+
+    if (cfsetospeed(&mcu_attr, B57600)) {
+        fprintf(stderr, "Setting speed failed: %s (%d)\n", strerror(errno),
+                errno);
+        close(fd);
+        return 1;
+    }
+
+    retval = tcsetattr(fd, TCSANOW, &mcu_attr);
+
+    if (retval) {
+        fprintf(stderr, "Setting terminal attributes failed: %s (%d)\n",
+                strerror(errno), errno);
+        close(fd);
+        return 1;
+    }
+
+    l_shared->mcu_fd = fd;
+
+    return 0;
+}
+
 uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
                                   struct json_object *json)
 {
     int json_arr_len = json_object_array_length(json);
     struct json_object *json_port, *path_array = NULL, *json_path;
-    char *path;
-    const char *path_org;
+    char *path, *mcu_path;
+    const char *path_org, *mcu_path_org = NULL;
     int i, j;
     uint8_t bit = UINT8_MAX, unknown_option = 0;
+    struct lanner_shared *l_shared;
 
     for (i = 0; i < json_arr_len; i++) {
         json_port = json_object_array_get_idx(json, i); 
@@ -91,34 +140,61 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
         json_object_object_foreach(json_port, key, val) {
             if (!strcmp(key, "path") && json_object_is_type(val, json_type_array)) {
                 path_array = val;
-                continue;
             } else if (!strcmp(key, "bit") && json_object_is_type(val, json_type_int)) {
                 bit = (uint8_t) json_object_get_int(val);
-                continue;
+            } else if (!strcmp(key, "mcu_path") && json_object_is_type(val, json_type_string)) {
+                mcu_path_org = json_object_get_string(val);
             } else {
                 unknown_option = 1;
                 break;
             }
         }
 
-        if (unknown_option ||
-            bit == UINT8_MAX ||
-            !path_array ||
-            !json_object_array_length(path_array)) {
+        if (unknown_option || bit == UINT8_MAX || !path_array || !mcu_path_org
+            || !json_object_array_length(path_array)) {
             return 1;
         }
-        
+       
+        if (!(mcu_path = strdup(mcu_path_org))) {
+            return 1;
+        }
+
+        l_shared = calloc(sizeof(struct lanner_shared), 1);
+
+        if (!l_shared) {
+            free(mcu_path);
+            return 1;
+        }
+
+        l_shared->mcu_path = mcu_path;
+
+        if (lanner_handler_open_mcu(l_shared)) {
+            free(mcu_path);
+            free(l_shared);
+            return 1;
+        }
+
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Lanner shared info. Path: %s "
+                               "FD: %d\n", l_shared->mcu_path,
+                               l_shared->mcu_fd);
+
         for (j = 0; j < json_object_array_length(path_array); j++) {
             json_path = json_object_array_get_idx(path_array, j);
             path_org = json_object_get_string(json_path);
             path = strdup(path_org);
 
             if (!path) {
+                close(l_shared->mcu_fd);
+                free(mcu_path);
+                free(l_shared);
                 return 1;
             }
 
             if (lanner_handler_add_port(ctx, path, bit)) {
+                close(l_shared->mcu_fd);
                 free(path);
+                free(mcu_path);
+                free(l_shared);
                 return 1;
             }
 

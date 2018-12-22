@@ -8,8 +8,14 @@ enum {
     LANNER_STATE_OFF
 };
 
+struct lanner_shared {
+    char *mcu_path;
+    int mcu_fd;
+};
+
 struct lanner_port {
     USB_PORT_MANDATORY;
+    struct lanner_shared *shared_info;
     uint8_t bitmask;
     //Lanner does not allow control of a single port, instead we must write the complete bitmask every time
     uint8_t cur_state;
