@@ -3,9 +3,76 @@
 
 #include "usb_monitor.h"
 #include "usb_logging.h"
+#include "usb_helpers.h"
 #include "lanner_handler.h"
 
-uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx, struct json_object *json)
+static void lanner_print_port(struct usb_port *port)
+{
+    char buf[4] = {0};
+    struct lanner_port *l_port = (struct lanner_port *) port;
+
+    snprintf(buf, sizeof(buf), "%u", (uint8_t) ffs(l_port->bitmask));
+
+    usb_helpers_print_port(port, "Lanner", buf);
+}
+
+static int32_t lanner_update_port(struct usb_port *port, uint8_t cmd)
+{
+    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Update port %u\n", cmd);
+    return 0;
+}
+
+static void lanner_handle_timeout(struct usb_port *port)
+{
+    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Timeout\n");
+}
+
+static uint8_t lanner_handler_add_port(struct usb_monitor_ctx *ctx,
+                                       char *dev_path, uint8_t bit)
+{
+    uint8_t dev_path_array[USB_PATH_MAX];
+    const char *dev_path_ptr = (const char *) dev_path_array;
+    uint8_t dev_path_len = 0;
+    struct lanner_port *port;
+
+    if (usb_helpers_convert_char_to_path(dev_path, dev_path_array,
+                                         &dev_path_len)) {
+        fprintf(stderr, "Path for Lanner device is too long\n");
+        return 1;
+    }
+
+    port = calloc(sizeof(struct lanner_port), 1);
+
+    if (!port) {
+        fprintf(stderr, "Could not allocate memory for lanner port\n");
+        return 1;
+    }
+
+    port->port_type = PORT_TYPE_LANNER;
+    port->output = lanner_print_port;
+    port->update = lanner_update_port;
+    port->timeout = lanner_handle_timeout;
+
+    //This is the bitmask used to enable/disable the port. The reason bit is
+    //not zero-indexed in config, is to be consistent with Lanner tools/doc
+    port->bitmask = 1 << (bit - 1);
+    port->cur_state = LANNER_STATE_ON;
+
+    //If we get into the situation where multiple paths are controlled by the
+    //same bit, we need to implement a lookup here (similar to gpio and
+    //gpio_num). However, so far on Lanner, one port == one bit
+    if(usb_helpers_configure_port((struct usb_port *) port,
+                                  ctx, dev_path_ptr, dev_path_len, 0, NULL)) {
+        fprintf(stderr, "Failed to configure lanner port\n");
+        free(port);
+        return 1;
+    }
+
+    return 0;
+}
+
+uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
+                                  struct json_object *json)
 {
     int json_arr_len = json_object_array_length(json);
     struct json_object *json_port, *path_array = NULL, *json_path;
@@ -46,15 +113,14 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx, struct json_objec
                 return 1;
             }
 
-            /*if (gpio_handler_add_port(ctx, path, gpio_num, on_val, off_val,
-                        gpio_path)) {
+            if (lanner_handler_add_port(ctx, path, bit)) {
                 free(path);
                 return 1;
-            }*/
+            }
 
             USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
-                                   "Read following info from config %s (%u)"
-                                   " (Lanner)\n", path_org, bit);
+                                   "Read following info from config. Path  %s "
+                                   "(bit %u) (Lanner)\n", path_org, bit);
             free(path);
         }
     }

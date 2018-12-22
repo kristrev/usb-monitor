@@ -10,7 +10,7 @@ enum {
 
 struct lanner_port {
     USB_PORT_MANDATORY;
-    uint8_t bit_num;
+    uint8_t bitmask;
     //Lanner does not allow control of a single port, instead we must write the complete bitmask every time
     uint8_t cur_state;
 };
