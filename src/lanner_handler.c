@@ -211,8 +211,8 @@ static void lanner_handler_handle_input(struct lanner_shared *l_shared)
     ssize_t numbytes = read(l_shared->mcu_fd, input_buf_tmp,
                             sizeof(input_buf_tmp));
 
-    USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Read %zd bytes\n",
-                           numbytes);
+    USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Read %zd bytes: %s\n",
+                           numbytes, input_buf_tmp);
 }
 
 static void lanner_handler_event_cb(void *ptr, int32_t fd, uint32_t events)
