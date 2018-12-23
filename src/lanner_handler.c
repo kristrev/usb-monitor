@@ -47,6 +47,7 @@ static int32_t lanner_update_port(struct usb_port *port, uint8_t cmd)
 
     if (cmd == CMD_RESTART) {
         l_port->restart_cmd = CMD_DISABLE;
+        l_port->msg_mode = RESET;
     }
 
     //"Register" this port with the shared structure
@@ -111,6 +112,13 @@ static uint8_t lanner_handler_add_port(struct usb_monitor_ctx *ctx,
     }
 
     return 0;
+}
+
+static void lanner_handle_flush_mcu(struct lanner_shared *l_shared)
+{
+    uint8_t tmp_buf[255];
+
+    while (read(l_shared->mcu_fd, tmp_buf, sizeof(tmp_buf)) > 0) {}
 }
 
 static uint8_t lanner_handler_open_mcu(struct lanner_shared *l_shared)
@@ -200,6 +208,8 @@ static uint8_t lanner_handler_open_mcu(struct lanner_shared *l_shared)
     }
 
     l_shared->mcu_fd = fd;
+
+    lanner_handle_flush_mcu(l_shared);
 
     return 0;
 }

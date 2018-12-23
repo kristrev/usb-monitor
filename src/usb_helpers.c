@@ -444,11 +444,13 @@ void usb_helpers_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t forced)
     LIST_FOREACH(itr, &(ctx->port_list), port_next) {
         //Only restart enabled ports which are not connected and are currently
         //not being reset or probed
-        if (itr->msg_mode == RESET || !itr->enabled || itr->msg_mode == PROBE)
+        if (itr->msg_mode == RESET || !itr->enabled || itr->msg_mode == PROBE) {
             continue;
+        }
 
-        if (forced || itr->status == PORT_NO_DEV_CONNECTED)
+        if (forced || itr->status == PORT_NO_DEV_CONNECTED) {
             itr->update(itr, CMD_RESTART);
+        }
     }
 }
 
