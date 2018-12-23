@@ -38,7 +38,7 @@ static int32_t lanner_update_port(struct usb_port *port, uint8_t cmd)
     if (l_shared->mcu_state != LANNER_MCU_IDLE &&
         l_shared->mcu_state != LANNER_MCU_PENDING) {
         //TODO: Update to return 503 instead
-        return 1;
+        return 503;
     }
 
     //We keep the current command in the port. The bitmask will be generated
@@ -383,7 +383,7 @@ static void lanner_handler_handle_input(struct lanner_shared *l_shared)
         return;
     }
 
-    if (!strncmp(LANNER_HANDLER_OK_REPLY, l_shared->buf_input,
+    if (strncmp(LANNER_HANDLER_OK_REPLY, l_shared->buf_input,
                  strlen(LANNER_HANDLER_OK_REPLY))) {
         lanner_handler_ok_reply(l_shared);
     } else {

@@ -155,7 +155,7 @@ static void usb_monitor_client_handle_get(struct http_client *client)
     json_object_put(json_ports);
 }
 
-static uint8_t usb_monitor_client_update_ports(struct usb_monitor_ctx *ctx,
+static int32_t usb_monitor_client_update_ports(struct usb_monitor_ctx *ctx,
                                                 struct json_object *ports)
 {
     struct json_object *port;
@@ -164,7 +164,8 @@ static uint8_t usb_monitor_client_update_ports(struct usb_monitor_ctx *ctx,
     const char *path = NULL;
     uint8_t cmd = CMD_RESTART;
     uint8_t dev_path[USB_PATH_MAX];
-    uint8_t path_len = 0, failure = 0;
+    uint8_t path_len = 0;
+    int32_t failure = 0;
     struct usb_port *port_ptr = NULL;
 
     for (i = 0; i < len; i++) {
@@ -235,8 +236,7 @@ static void usb_monitor_client_handle_post(struct http_client *client)
 {
     json_object *json_obj, *ports = NULL;
     char hdr_buf[HTTP_REPLY_HEADER_MAX_LEN];
-    int32_t actual_hdr_len = 0;
-    uint8_t retval = 0;
+    int32_t actual_hdr_len = 0, retval = 0;
     const char *json_str = NULL;
 
     if (client->body_offset == NULL) {
@@ -275,7 +275,11 @@ static void usb_monitor_client_handle_post(struct http_client *client)
     json_object_put(json_obj); 
 
     if (retval) {
-        usb_monitor_client_send_code(client, 400);
+        if (retval > 100) {
+            usb_monitor_client_send_code(client, retval);
+        } else {
+            usb_monitor_client_send_code(client, 400);
+        }
     } else {
         actual_hdr_len = insert_http_header(1, 0, HTTP_OK_HEADER, hdr_buf,
                                             sizeof(hdr_buf));
