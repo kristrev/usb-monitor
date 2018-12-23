@@ -220,7 +220,8 @@ void backend_event_loop_run(struct backend_event_loop *del)
         if (usb_handle)
             usb_handle->cb(usb_handle->data, usb_handle->fd, 0);
 
-        if (del->itr_cb != NULL)
+        if (del->itr_cb != NULL) {
             del->itr_cb(del->itr_data);
+        }
     }
 }

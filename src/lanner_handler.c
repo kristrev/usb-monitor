@@ -14,17 +14,41 @@
 
 static void lanner_print_port(struct usb_port *port)
 {
-    char buf[4] = {0};
-    struct lanner_port *l_port = (struct lanner_port *) port;
+    char buf[10] = {0};
+    struct lanner_port *l_port = (struct lanner_port*) port;
 
-    snprintf(buf, sizeof(buf), "%u", (uint8_t) ffs(l_port->bitmask));
+    snprintf(buf, sizeof(buf), "(bit %u)", (uint8_t) ffs(l_port->bitmask));
 
     usb_helpers_print_port(port, "Lanner", buf);
 }
 
 static int32_t lanner_update_port(struct usb_port *port, uint8_t cmd)
 {
-    USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Update port %u\n", cmd);
+    struct lanner_port *l_port = (struct lanner_port*) port;
+    struct lanner_shared *l_shared = l_port->shared_info;
+
+    //Order of operations here is:
+    //* Return an error if shared is not IDLE/PENDING
+    //* Set cmd of port to whatever is stored
+    //* Update bitmask of shared
+    if (l_shared->mcu_state != LANNER_MCU_IDLE &&
+        l_shared->mcu_state != LANNER_MCU_PENDING) {
+        //TODO: Update to return 503 instead
+        return 1;
+    }
+
+    //We keep the current command in the port. The bitmask will be generated
+    //based on the different cur_cmd values
+    l_port->cur_cmd = cmd;
+
+    //"Register" this port with the shared structure
+    l_shared->mcu_ports_mask |= l_port->bitmask;
+
+    //Ensure that state of l_shared is correct + that callback is added. Doing
+    //these operations multiple times does no harm
+    l_shared->mcu_state = LANNER_MCU_PENDING;
+    usb_monitor_start_itr_cb(l_port->ctx);
+
     return 0;
 }
 
@@ -165,6 +189,7 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
         return 1;
     }
 
+    l_shared->mcu_state = LANNER_MCU_IDLE;
     l_shared->mcu_path = mcu_path;
 
     if (lanner_handler_open_mcu(l_shared)) {
@@ -217,6 +242,11 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
             free(path);
         }
     }
+
+    //This is not very clean, lanner state should ideally be completely
+    //isolated. However, I prefer this approach to iterating through ports and
+    //finding the first Lanner port (for example)
+    ctx->mcu_state = l_shared;
 
     return 0;
 }

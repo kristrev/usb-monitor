@@ -41,6 +41,8 @@ struct backend_epoll_handle;
 struct backend_event_loop;
 struct http_client;
 
+struct lanner_shared;
+
 //port function pointers
 typedef void (*print_port)(struct usb_port *port);
 typedef int32_t (*update_port)(struct usb_port *port, uint8_t cmd);
@@ -136,6 +138,7 @@ struct usb_monitor_ctx {
     struct backend_epoll_handle *accept_handle;
     struct usb_bad_device *bad_device_ids;
     struct http_client *clients[MAX_HTTP_CLIENTS];
+    struct lanner_shared *mcu_state;
     struct timeval last_restart;
     struct timeval last_dev_check;
     FILE* logfile;
@@ -151,5 +154,7 @@ struct usb_monitor_ctx {
 
 //Output all of the ports, move to helpers?
 void usb_monitor_print_ports(struct usb_monitor_ctx *ctx);
+
+void usb_monitor_start_itr_cb();
 
 #endif

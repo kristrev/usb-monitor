@@ -59,6 +59,10 @@ void usb_monitor_print_ports(struct usb_monitor_ctx *ctx)
     fprintf(ctx->logfile, "\n");
 }
 
+void usb_monitor_start_itr_cb(struct usb_monitor_ctx *ctx)
+{
+    ctx->event_loop->itr_cb = usb_monitor_itr_cb;
+}
 
 static uint8_t usb_monitor_parse_handlers(struct usb_monitor_ctx *ctx,
                                           struct json_object *handlers)
@@ -263,21 +267,24 @@ static void usb_monitor_start_event_loop(struct usb_monitor_ctx *ctx)
     //These timeout pointers will live for as long as the application.
     //Therefore, there is no need to save them anywhere
     if (!backend_event_loop_add_timeout(ctx->event_loop, cur_time + 1000,
-                                        usb_monitor_1sec_timeout_cb, ctx, 1000))
+                                        usb_monitor_1sec_timeout_cb, ctx, 1000)) {
         return;
+    }
    
     //Do not make this one a multiple of reset_cb timeout. There is no need
     //resetting and checking at the same time
     if (!backend_event_loop_add_timeout(ctx->event_loop, cur_time + 25000,
                                         usb_monitor_check_devices_cb,
-                                        ctx, 25000))
+                                        ctx, 25000)) {
         return;
+    }
 
     if (!ctx->disable_auto_restart &&
         !backend_event_loop_add_timeout(ctx->event_loop, cur_time + 60000,
                                         usb_monitor_check_reset_cb,
-                                        ctx, 60000))
+                                        ctx, 60000)) {
         return;
+    }
 
     backend_event_loop_run(ctx->event_loop);
 }
