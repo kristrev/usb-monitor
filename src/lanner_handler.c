@@ -315,6 +315,7 @@ static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
         if (cmd_to_check == CMD_ENABLE) {
             l_port->enabled = 1;
             l_port->pwr_state = 1;
+            l_port->msg_mode = IDLE;
 
             //Always unset bit in ENABLE. It is either a command itself or the
             //last part of restart (restart is done)
