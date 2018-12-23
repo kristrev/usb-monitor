@@ -5,6 +5,8 @@
 
 #define LANNER_HANDLER_OK_REPLY "100 OK"
 
+#define LANNER_HANDLER_RESTART_MS   5000
+
 enum {
     LANNER_STATE_ON,
     LANNER_STATE_OFF
@@ -22,12 +24,14 @@ enum {
 };
 
 struct backend_epoll_handle;
+struct backend_timeout_handle;
 struct usb_monitor_ctx;
 
 struct lanner_shared {
     struct usb_monitor_ctx *ctx;
     char *mcu_path;
     struct backend_epoll_handle *mcu_epoll_handle;
+    struct backend_timeout_handle *mcu_timeout_handle;
 
     int mcu_fd;
     uint8_t mcu_state;

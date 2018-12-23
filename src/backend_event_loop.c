@@ -86,8 +86,8 @@ static void backend_print_timeouts(struct backend_event_loop *del)
     printf("\n");
 }
 
-static void backend_insert_timeout(struct backend_event_loop *del,
-                                   struct backend_timeout_handle *handle)
+void backend_insert_timeout(struct backend_event_loop *del,
+                            struct backend_timeout_handle *handle)
 {
     struct backend_timeout_handle *itr = del->timeout_list.lh_first, *prev_itr;
 
@@ -108,9 +108,23 @@ static void backend_insert_timeout(struct backend_event_loop *del,
     LIST_INSERT_AFTER(prev_itr, handle, timeout_next);
 }
 
+void backend_delete_timeout(struct backend_timeout_handle *timeout)
+{
+    //Timer is not active
+    if (!timeout->timeout_next.le_next &&
+        !timeout->timeout_next.le_prev) {
+        return;
+    }
+
+    LIST_REMOVE(timeout, timeout_next);
+    timeout->timeout_next.le_next = NULL;
+    timeout->timeout_next.le_prev = NULL;
+}
+
 struct backend_timeout_handle* backend_event_loop_add_timeout(
         struct backend_event_loop *del, uint64_t timeout_clock,
-        backend_timeout_cb timeout_cb, void *ptr, uint32_t intvl)
+        backend_timeout_cb timeout_cb, void *ptr, uint32_t intvl,
+        bool free_after_use)
 {
     //In an improved version, handle can be passed as argument so that it is up
     //to application how to allocate it
@@ -124,8 +138,12 @@ struct backend_timeout_handle* backend_event_loop_add_timeout(
     handle->cb = timeout_cb;
     handle->data = ptr;
     handle->intvl = intvl;
+    handle->auto_free = free_after_use;
 
-    backend_insert_timeout(del, handle);
+    if (timeout_clock) {
+        backend_insert_timeout(del, handle);
+    }
+
     return handle;
 }
 
@@ -146,15 +164,13 @@ static void backend_event_loop_run_timers(struct backend_event_loop *del)
 
             //Execute and remove timeout from list
             cur_timeout->cb(cur_timeout->data);
-            LIST_REMOVE(cur_timeout, timeout_next);
-            cur_timeout->timeout_next.le_next = NULL;
-            cur_timeout->timeout_next.le_prev = NULL;
+            backend_delete_timeout(cur_timeout);
 
             //Rearm timer or free memory if we are done
             if (cur_timeout->intvl) {
                 cur_timeout->timeout_clock = cur_time + cur_timeout->intvl;
                 backend_insert_timeout(del, cur_timeout);
-            } else {
+            } else if (cur_timeout->auto_free) {
                 free(cur_timeout);
             }
         } else {

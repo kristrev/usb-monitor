@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <sys/epoll.h>
 #include <stdbool.h>
+#include <time.h>
 
 #include "usb_monitor.h"
 #include "usb_logging.h"
@@ -63,8 +64,6 @@ static void lanner_handle_timeout(struct usb_port *port)
 {
     if (port->msg_mode == PING) {
         usb_helpers_send_ping(port);
-    } else {
-        USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO, "Timeout\n");
     }
 }
 
@@ -207,6 +206,10 @@ static uint8_t lanner_handler_open_mcu(struct lanner_shared *l_shared)
 
 static void lanner_handler_cleanup_shared(struct lanner_shared *l_shared)
 {
+    if (l_shared->mcu_timeout_handle) {
+        free(l_shared->mcu_timeout_handle);
+    }
+
     if (l_shared->mcu_epoll_handle) {
         free(l_shared->mcu_epoll_handle);
     }
@@ -220,6 +223,20 @@ static void lanner_handler_cleanup_shared(struct lanner_shared *l_shared)
     }
 
     free(l_shared);
+}
+
+static void lanner_handler_start_private_timer(struct lanner_shared *l_shared,
+                                               uint32_t timeout_ms)
+{
+    struct timespec tp;
+    uint64_t cur_time;
+
+    clock_gettime(CLOCK_MONOTONIC_RAW, &tp);
+    cur_time = (tp.tv_sec * 1e3) + (tp.tv_nsec / 1e6);
+
+    l_shared->mcu_timeout_handle->timeout_clock = cur_time + timeout_ms;
+
+    backend_insert_timeout(NULL, l_shared->mcu_timeout_handle);
 }
 
 static void lanner_handler_write_cmd_buf(struct lanner_shared *l_shared)
@@ -268,6 +285,7 @@ static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
 {
     struct usb_port *itr;
     struct lanner_port *l_port;
+    uint8_t cmd_to_check;
 
     LIST_FOREACH(itr, &(l_shared->ctx->port_list), port_next) {
         if (itr->port_type != PORT_TYPE_LANNER) {
@@ -280,17 +298,27 @@ static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
             continue;
         }
 
-        if (l_port->cur_cmd == CMD_ENABLE) {
+        cmd_to_check = l_port->cur_cmd == CMD_RESTART ? l_port->restart_cmd :
+                                                        l_port->cur_cmd;
+
+        if (cmd_to_check == CMD_ENABLE) {
             l_port->enabled = 1;
             l_port->pwr_state = 1;
 
-            //The reason we can't just set mask to 0, is that RESTART needs
-            //to be handled a bit special
+            //Always unset bit in ENABLE. It is either a command itself or the
+            //last part of restart (restart is done)
             l_shared->pending_ports_mask &= ~l_port->bitmask;
-        } else if (l_port->cur_cmd == CMD_DISABLE) {
+        } else if (cmd_to_check == CMD_DISABLE) {
             l_port->enabled = 0;
             l_port->pwr_state = 0;
-            l_shared->pending_ports_mask &= ~l_port->bitmask;
+
+            //Only unset bit if command is not RESTART. If command is restart,
+            //weneed to enable port again
+            if (l_port->cur_cmd != CMD_RESTART) {
+                l_shared->pending_ports_mask &= ~l_port->bitmask;
+            } else {
+                l_port->restart_cmd = CMD_ENABLE;
+            }
         }
     }
 
@@ -299,15 +327,16 @@ static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
 
     if (!l_shared->pending_ports_mask) {
         l_shared->mcu_state = LANNER_MCU_IDLE;
+    } else {
+        lanner_handler_start_private_timer(l_shared, LANNER_HANDLER_RESTART_MS);
     }
 }
 
 static void lanner_handler_handle_input(struct lanner_shared *l_shared)
 {
     uint8_t input_buf_tmp[256] = {0};
-    /*ssize_t numbytes = read(l_shared->mcu_fd, input_buf_tmp,
-                            (sizeof(input_buf_tmp) - 1));*/
-    ssize_t numbytes = read(l_shared->mcu_fd, input_buf_tmp, 1);
+    ssize_t numbytes = read(l_shared->mcu_fd, input_buf_tmp,
+                            (sizeof(input_buf_tmp) - 1));
     uint8_t i;
     bool found_newline = false;
 
@@ -365,6 +394,11 @@ static void lanner_handler_event_cb(void *ptr, int32_t fd, uint32_t events)
     }
 }
 
+static void lanner_handle_private_timeout(void *ptr)
+{
+    lanner_handler_start_mcu_update(ptr);
+}
+
 void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
 {
     struct usb_port *itr = NULL;
@@ -381,6 +415,7 @@ void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
 
         l_port = (struct lanner_port*) itr;
 
+        //We write the state for all ports to the MCU, not just those that are updated
         if (!(l_shared->pending_ports_mask & l_port->bitmask)) {
             //Initial value of mcu_bitmask is 0, which means that all ports
             //will be enabled. We need to set the bits of the ports that are
@@ -388,10 +423,11 @@ void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
             if (!l_port->pwr_state) {
                 mcu_bitmask |= l_port->bitmask;
             }
-        }
-
-        if (l_port->cur_cmd == CMD_DISABLE) {
-            mcu_bitmask |= l_port->bitmask;
+        } else {
+            if (l_port->cur_cmd == CMD_DISABLE ||
+                (l_port->cur_cmd == CMD_RESTART && l_port->restart_cmd == CMD_DISABLE)) {
+                mcu_bitmask |= l_port->bitmask;
+            }
         }
     }
 
@@ -406,7 +442,6 @@ void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
 
     lanner_handler_write_cmd_buf(l_shared);
 }
-
 
 uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
                                   struct json_object *json,
@@ -451,6 +486,16 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
         lanner_handler_cleanup_shared(l_shared);
         return 1;
     }
+    if (!(l_shared->mcu_timeout_handle = backend_event_loop_add_timeout(ctx->event_loop,
+                                                                        0,
+                                                                        lanner_handle_private_timeout,
+                                                                        ctx,
+                                                                        0,
+                                                                        false))) {
+        lanner_handler_cleanup_shared(l_shared);
+        return 1;
+    }
+
 
     USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Lanner shared info. Path: %s "
                            "FD: %d\n", l_shared->mcu_path,
@@ -472,6 +517,7 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
 
         if (unknown_option || bit == UINT8_MAX || !path_array
             || !json_object_array_length(path_array)) {
+            lanner_handler_cleanup_shared(l_shared);
             return 1;
         }
        
