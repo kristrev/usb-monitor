@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define LANNER_HANDLER_OK_REPLY "100 OK"
+
 enum {
     LANNER_STATE_ON,
     LANNER_STATE_OFF

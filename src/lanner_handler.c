@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/epoll.h>
+#include <stdbool.h>
 
 #include "usb_monitor.h"
 #include "usb_logging.h"
@@ -185,7 +186,8 @@ static void lanner_handler_write_cmd_buf(struct lanner_shared *l_shared)
                                       EPOLL_CTL_MOD, l_shared->mcu_fd,
                                       l_shared->mcu_epoll_handle);
         } else {
-            //START TIMER AND TRY AGAIN? OR JUST STOP? OR JUST NOT DO ANYTHING?
+            //I don't know what to do here? Can it happen? Can we recover? Just
+            //add EPOLLIN and hope for the best? exit?
             USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR, "Failed to write to MCU: "
                                    "%s (%d)\n", strerror(errno), errno);
         }
@@ -198,6 +200,7 @@ static void lanner_handler_write_cmd_buf(struct lanner_shared *l_shared)
     if (l_shared->cmd_buf_progress == l_shared->cmd_buf_strlen) {
         USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Done writing command\n");
         monitor_events = EPOLLIN;
+        l_shared->mcu_state = LANNER_MCU_WAIT_OK;
     } else {
         //We need to wait for EPOLLOUT, we had a short write
         monitor_events = EPOLLIN | EPOLLOUT;
@@ -212,10 +215,47 @@ static void lanner_handler_handle_input(struct lanner_shared *l_shared)
 {
     uint8_t input_buf_tmp[256] = {0};
     ssize_t numbytes = read(l_shared->mcu_fd, input_buf_tmp,
-                            sizeof(input_buf_tmp));
+                            (sizeof(input_buf_tmp) - 1));
+    uint8_t i;
+    bool found_newline = false;
 
-    USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Read %zd bytes: %s\n",
-                           numbytes, input_buf_tmp);
+    if (l_shared->mcu_state != LANNER_MCU_WAIT_OK || numbytes <= 0) {
+        return;
+    }
+
+    //Aborting here is not very nice, but it is the only thing I can think of
+    //now. Aborting is not a big problem, as usb monitor will recover fine after
+    //a restart. Remember that we have already written our command (unless something
+    //breaks in the MCU), so if we get here and fail then for example a disabled
+    //port will be enabled again by our watchdog.
+    if (numbytes + l_shared->input_progress > (sizeof(l_shared->buf_input) - 1)) {
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_ERR,
+                               "Oversized reply from MCU\n");
+        exit(EXIT_FAILURE);
+    }
+
+    memcpy(l_shared->buf_input + l_shared->input_progress, input_buf_tmp,
+           numbytes);
+    l_shared->input_progress += numbytes;
+
+    for (i = 0; i < l_shared->input_progress; i++) {
+        if (l_shared->buf_input[i] == '\n') {
+            found_newline = true;
+            break;
+        }
+    }
+
+    if (!found_newline) {
+        return;
+    }
+
+    if (!strncmp(LANNER_HANDLER_OK_REPLY, l_shared->buf_input,
+                 strlen(LANNER_HANDLER_OK_REPLY))) {
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "MCU repled OK\n");
+    } else {
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Read %zd bytes: %s\n",
+                               numbytes, input_buf_tmp);
+    }
 }
 
 static void lanner_handler_event_cb(void *ptr, int32_t fd, uint32_t events)
@@ -223,12 +263,10 @@ static void lanner_handler_event_cb(void *ptr, int32_t fd, uint32_t events)
     struct usb_monitor_ctx *ctx = ptr;
 
     if (events & EPOLLIN) {
-        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "EPOLLIN\n");
         lanner_handler_handle_input(ctx->mcu_info);
     }
 
     if (events & EPOLLOUT) {
-        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "EPOLLOUT\n");
         lanner_handler_write_cmd_buf(ctx->mcu_info);
     }
 }
