@@ -236,4 +236,6 @@ void usb_monitor_itr_cb(void *ptr)
     struct usb_monitor_ctx *ctx = ptr;
 
     USB_DEBUG_PRINT_SYSLOG(ctx, LOG_DEBUG, "Heihei from itr\n");
+
+    usb_monitor_stop_itr_cb(ctx);
 }

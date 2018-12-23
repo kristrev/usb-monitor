@@ -155,6 +155,7 @@ struct usb_monitor_ctx {
 //Output all of the ports, move to helpers?
 void usb_monitor_print_ports(struct usb_monitor_ctx *ctx);
 
-void usb_monitor_start_itr_cb();
+void usb_monitor_start_itr_cb(struct usb_monitor_ctx *ctx);
+void usb_monitor_stop_itr_cb(struct usb_monitor_ctx *ctx);
 
 #endif

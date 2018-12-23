@@ -61,7 +61,13 @@ void usb_monitor_print_ports(struct usb_monitor_ctx *ctx)
 
 void usb_monitor_start_itr_cb(struct usb_monitor_ctx *ctx)
 {
+    ctx->event_loop->itr_data = ctx;
     ctx->event_loop->itr_cb = usb_monitor_itr_cb;
+}
+
+void usb_monitor_stop_itr_cb(struct usb_monitor_ctx *ctx)
+{
+    ctx->event_loop->itr_cb = ctx->event_loop->itr_data = NULL;
 }
 
 static uint8_t usb_monitor_parse_handlers(struct usb_monitor_ctx *ctx,
@@ -381,7 +387,6 @@ static uint8_t usb_monitor_configure(struct usb_monitor_ctx *ctx, uint8_t sock)
     //We handle maximum of five concurrent clients
     ctx->clients_map = 0x1F;
     ctx->event_loop = backend_event_loop_create();
-    ctx->event_loop->itr_data = ctx;
 
     for (i = 0; i < MAX_HTTP_CLIENTS; i++)
         ctx->clients[i] = NULL;
