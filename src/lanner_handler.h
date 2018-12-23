@@ -49,6 +49,7 @@ struct lanner_port {
     struct lanner_shared *shared_info;
     uint8_t bitmask;
     uint8_t cur_cmd;
+    uint8_t rest_sub_cmd;
     //Lanner does not allow control of a single port, instead we must write
     //the complete bitmask every time
     uint8_t cur_state;
