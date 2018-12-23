@@ -378,8 +378,8 @@ static void lanner_handler_handle_input(struct lanner_shared *l_shared)
     } else {
         USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Read %zd bytes: %s\n",
                                numbytes, input_buf_tmp);
-
-        //START A TIME OR SOMETHING HERE
+        l_shared->mcu_state = LANNER_MCU_WRITING;
+        lanner_handler_start_private_timer(l_shared, LANNER_HANDLER_RESTART_MS);
     }
 }
 
