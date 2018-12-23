@@ -44,6 +44,10 @@ static int32_t lanner_update_port(struct usb_port *port, uint8_t cmd)
     //based on the different cur_cmd values
     l_port->cur_cmd = cmd;
 
+    if (cmd == CMD_RESTART) {
+        l_port->restart_cmd = CMD_DISABLE;
+    }
+
     //"Register" this port with the shared structure
     l_shared->pending_ports_mask |= l_port->bitmask;
 
@@ -112,7 +116,8 @@ static uint8_t lanner_handler_add_port(struct usb_monitor_ctx *ctx,
 
 static uint8_t lanner_handler_open_mcu(struct lanner_shared *l_shared)
 {
-    int fd = open(l_shared->mcu_path, O_RDWR | O_NONBLOCK | O_CLOEXEC), retval;
+    int fd = open(l_shared->mcu_path, O_RDWR | O_NOCTTY | O_NONBLOCK |
+                  O_CLOEXEC), retval;
     struct termios mcu_attr;
 
     if (fd == -1) {
@@ -300,8 +305,9 @@ static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
 static void lanner_handler_handle_input(struct lanner_shared *l_shared)
 {
     uint8_t input_buf_tmp[256] = {0};
-    ssize_t numbytes = read(l_shared->mcu_fd, input_buf_tmp,
-                            (sizeof(input_buf_tmp) - 1));
+    /*ssize_t numbytes = read(l_shared->mcu_fd, input_buf_tmp,
+                            (sizeof(input_buf_tmp) - 1));*/
+    ssize_t numbytes = read(l_shared->mcu_fd, input_buf_tmp, 1);
     uint8_t i;
     bool found_newline = false;
 
