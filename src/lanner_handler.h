@@ -24,7 +24,7 @@ struct lanner_shared {
     int mcu_fd;
     uint8_t mcu_state;
     //Mask of ports with a pending event
-    uint8_t mcu_ports_mask;
+    uint8_t pending_ports_mask;
 };
 
 struct lanner_port {

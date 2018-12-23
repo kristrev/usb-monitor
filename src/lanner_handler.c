@@ -42,7 +42,7 @@ static int32_t lanner_update_port(struct usb_port *port, uint8_t cmd)
     l_port->cur_cmd = cmd;
 
     //"Register" this port with the shared structure
-    l_shared->mcu_ports_mask |= l_port->bitmask;
+    l_shared->pending_ports_mask |= l_port->bitmask;
 
     //Ensure that state of l_shared is correct + that callback is added. Doing
     //these operations multiple times does no harm
@@ -253,7 +253,39 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
 
 void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
 {
+    struct usb_port *itr = NULL;
+    struct lanner_port *l_port;
     struct lanner_shared *l_shared = ctx->mcu_info;
+    uint8_t mcu_bitmask = 0;
 
     l_shared->mcu_state = LANNER_MCU_WRITING;
+
+    //I need to create the bitmask for the operation
+    //Steps:
+    //* Iterate through ports and find the ones where the bit is set in the bitmask
+    //* Check command and create bitmask to write
+    //* Start writing the bitmask
+
+    LIST_FOREACH(itr, &(ctx->port_list), port_next) {
+        if (itr->port_type != PORT_TYPE_LANNER) {
+            continue;
+        }
+
+        l_port = (struct lanner_port*) itr;
+
+        if (!(l_shared->pending_ports_mask & l_port->bitmask)) {
+            //Initial value of mcu_bitmask is 0, which means that all ports
+            //will be enabled. We need to set the bits of the ports that are
+            //disabled
+            if (!l_port->pwr_state) {
+                mcu_bitmask |= l_port->bitmask; 
+            }
+        }
+
+        if (l_port->cur_cmd == CMD_DISABLE) {
+            mcu_bitmask |= l_port->bitmask;
+        }
+    }
+
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "MCU bitmask %u\n", mcu_bitmask);
 }
