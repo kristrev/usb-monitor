@@ -19,12 +19,27 @@ enum {
     LANNER_MCU_WAIT_OK
 };
 
+struct backend_epoll_handle;
+struct usb_monitor_ctx;
+
 struct lanner_shared {
+    struct usb_monitor_ctx *ctx;
     char *mcu_path;
+    struct backend_epoll_handle *mcu_epoll_handle;
+
     int mcu_fd;
     uint8_t mcu_state;
     //Mask of ports with a pending event
     uint8_t pending_ports_mask;
+
+    //Buffer that will keep our output string. Big enough to contain:
+    //SET DIGITAL_OUT X\n\0, where X has three digits
+    char cmd_buf[21];
+    char buf_input[256];
+
+    uint8_t cmd_buf_strlen;
+    uint8_t cmd_buf_progress;
+    uint8_t input_progress;
 };
 
 struct lanner_port {
@@ -37,7 +52,6 @@ struct lanner_port {
     uint8_t cur_state;
 };
 
-struct usb_monitor_ctx;
 struct json_object;
 
 void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx);

@@ -6,11 +6,13 @@
 #include <termios.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/epoll.h>
 
 #include "usb_monitor.h"
 #include "usb_logging.h"
 #include "usb_helpers.h"
 #include "lanner_handler.h"
+#include "backend_event_loop.h"
 
 static void lanner_print_port(struct usb_port *port)
 {
@@ -109,7 +111,7 @@ static uint8_t lanner_handler_add_port(struct usb_monitor_ctx *ctx,
 
 static uint8_t lanner_handler_open_mcu(struct lanner_shared *l_shared)
 {
-    int fd = open(l_shared->mcu_path, O_RDWR | O_CLOEXEC), retval;
+    int fd = open(l_shared->mcu_path, O_RDWR | O_NONBLOCK | O_CLOEXEC), retval;
     struct termios mcu_attr;
 
     if (fd == -1) {
@@ -151,6 +153,10 @@ static uint8_t lanner_handler_open_mcu(struct lanner_shared *l_shared)
 
 static void lanner_handler_cleanup_shared(struct lanner_shared *l_shared)
 {
+    if (l_shared->mcu_epoll_handle) {
+        free(l_shared->mcu_epoll_handle);
+    }
+
     if (l_shared->mcu_fd) {
         close(l_shared->mcu_fd);
     }
@@ -161,6 +167,111 @@ static void lanner_handler_cleanup_shared(struct lanner_shared *l_shared)
 
     free(l_shared);
 }
+
+static void lanner_handler_write_cmd_buf(struct lanner_shared *l_shared)
+{
+    struct usb_monitor_ctx *ctx = l_shared->ctx;
+    uint8_t bytes_to_write = l_shared->cmd_buf_strlen - l_shared->cmd_buf_progress;
+    ssize_t numbytes = write(l_shared->mcu_fd, l_shared->cmd_buf, bytes_to_write);
+    uint32_t monitor_events;
+
+    if (numbytes == -1) {
+        //Start EPOLLOUT
+        if (errno == EAGAIN) {
+            backend_event_loop_update(ctx->event_loop, EPOLLIN | EPOLLOUT,
+                                      EPOLL_CTL_MOD, l_shared->mcu_fd,
+                                      l_shared->mcu_epoll_handle);
+        } else {
+            //START TIMER AND TRY AGAIN? OR JUST STOP? OR JUST NOT DO ANYTHING?
+            USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR, "Failed to write to MCU: "
+                                   "%s (%d)\n", strerror(errno), errno);
+        }
+
+        return;
+    }
+
+    l_shared->cmd_buf_progress += numbytes;
+
+    if (l_shared->cmd_buf_progress == l_shared->cmd_buf_strlen) {
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Done writing command\n");
+        monitor_events = EPOLLIN;
+    } else {
+        //We need to wait for EPOLLOUT, we had a short write
+        monitor_events = EPOLLIN | EPOLLOUT;
+    }
+
+    backend_event_loop_update(ctx->event_loop, monitor_events,
+                              EPOLL_CTL_MOD, l_shared->mcu_fd,
+                              l_shared->mcu_epoll_handle);
+}
+
+static void lanner_handler_handle_input(struct lanner_shared *l_shared)
+{
+    uint8_t input_buf_tmp[256] = {0};
+    ssize_t numbytes = read(l_shared->mcu_fd, input_buf_tmp,
+                            sizeof(input_buf_tmp));
+
+    USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Read %zd bytes\n",
+                           numbytes);
+}
+
+static void lanner_handler_event_cb(void *ptr, int32_t fd, uint32_t events)
+{
+    struct usb_monitor_ctx *ctx = ptr;
+
+    if (events & EPOLLIN) {
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "EPOLLIN\n");
+        lanner_handler_handle_input(ctx->mcu_info);
+    }
+
+    if (events & EPOLLOUT) {
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "EPOLLOUT\n");
+        lanner_handler_write_cmd_buf(ctx->mcu_info);
+    }
+}
+
+void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
+{
+    struct usb_port *itr = NULL;
+    struct lanner_port *l_port;
+    struct lanner_shared *l_shared = ctx->mcu_info;
+    uint8_t mcu_bitmask = 0;
+
+    l_shared->mcu_state = LANNER_MCU_WRITING;
+
+    LIST_FOREACH(itr, &(ctx->port_list), port_next) {
+        if (itr->port_type != PORT_TYPE_LANNER) {
+            continue;
+        }
+
+        l_port = (struct lanner_port*) itr;
+
+        if (!(l_shared->pending_ports_mask & l_port->bitmask)) {
+            //Initial value of mcu_bitmask is 0, which means that all ports
+            //will be enabled. We need to set the bits of the ports that are
+            //disabled
+            if (!l_port->pwr_state) {
+                mcu_bitmask |= l_port->bitmask;
+            }
+        }
+
+        if (l_port->cur_cmd == CMD_DISABLE) {
+            mcu_bitmask |= l_port->bitmask;
+        }
+    }
+
+    snprintf(l_shared->cmd_buf, sizeof(l_shared->cmd_buf),
+             "SET DIGITAL_OUT %u\n", mcu_bitmask);
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "MCU cmd %s", l_shared->cmd_buf);
+
+    memset(l_shared->buf_input, 0, sizeof(l_shared->buf_input));
+    l_shared->input_progress = 0;
+    l_shared->cmd_buf_strlen = strlen(l_shared->cmd_buf);
+    l_shared->cmd_buf_progress = 0;
+
+    lanner_handler_write_cmd_buf(l_shared);
+}
+
 
 uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
                                   struct json_object *json,
@@ -189,10 +300,19 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
         return 1;
     }
 
+    l_shared->ctx = ctx;
     l_shared->mcu_state = LANNER_MCU_IDLE;
     l_shared->mcu_path = mcu_path;
 
     if (lanner_handler_open_mcu(l_shared)) {
+        lanner_handler_cleanup_shared(l_shared);
+        return 1;
+    }
+
+    if (!(l_shared->mcu_epoll_handle = backend_create_epoll_handle(ctx,
+                                                                   l_shared->mcu_fd,
+                                                                   lanner_handler_event_cb,
+                                                                   0))) {
         lanner_handler_cleanup_shared(l_shared);
         return 1;
     }
@@ -243,49 +363,14 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
         }
     }
 
+    //Start monitoring for EPOLLIN events right away, we will just add a filter
+    //to the callback to prevent parsing data when in wrong state
+    backend_event_loop_update(ctx->event_loop, EPOLLIN, EPOLL_CTL_ADD,
+                              l_shared->mcu_fd, l_shared->mcu_epoll_handle);
+
     //This is not very clean, lanner state should ideally be completely
     //isolated. However, I prefer this approach to iterating through ports and
     //finding the first Lanner port (for example)
     ctx->mcu_info = l_shared;
-
     return 0;
-}
-
-void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
-{
-    struct usb_port *itr = NULL;
-    struct lanner_port *l_port;
-    struct lanner_shared *l_shared = ctx->mcu_info;
-    uint8_t mcu_bitmask = 0;
-
-    l_shared->mcu_state = LANNER_MCU_WRITING;
-
-    //I need to create the bitmask for the operation
-    //Steps:
-    //* Iterate through ports and find the ones where the bit is set in the bitmask
-    //* Check command and create bitmask to write
-    //* Start writing the bitmask
-
-    LIST_FOREACH(itr, &(ctx->port_list), port_next) {
-        if (itr->port_type != PORT_TYPE_LANNER) {
-            continue;
-        }
-
-        l_port = (struct lanner_port*) itr;
-
-        if (!(l_shared->pending_ports_mask & l_port->bitmask)) {
-            //Initial value of mcu_bitmask is 0, which means that all ports
-            //will be enabled. We need to set the bits of the ports that are
-            //disabled
-            if (!l_port->pwr_state) {
-                mcu_bitmask |= l_port->bitmask; 
-            }
-        }
-
-        if (l_port->cur_cmd == CMD_DISABLE) {
-            mcu_bitmask |= l_port->bitmask;
-        }
-    }
-
-    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "MCU bitmask %u\n", mcu_bitmask);
 }
