@@ -40,6 +40,8 @@ struct lanner_port {
 struct usb_monitor_ctx;
 struct json_object;
 
+void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx);
+
 uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
                                   struct json_object *json,
                                   const char *mcu_path);

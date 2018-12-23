@@ -29,6 +29,7 @@
 #include "backend_event_loop.h"
 
 #include "gpio_handler.h"
+#include "lanner_handler.h"
 
 /* libusb-callbacks for when devices are added/removed. It is also called
  * manually when we detect a hub, since we risk devices being added before we
@@ -235,7 +236,6 @@ void usb_monitor_itr_cb(void *ptr)
 {
     struct usb_monitor_ctx *ctx = ptr;
 
-    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_DEBUG, "Heihei from itr\n");
-
+    lanner_handler_start_mcu_update(ctx);
     usb_monitor_stop_itr_cb(ctx);
 }

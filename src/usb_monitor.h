@@ -138,7 +138,7 @@ struct usb_monitor_ctx {
     struct backend_epoll_handle *accept_handle;
     struct usb_bad_device *bad_device_ids;
     struct http_client *clients[MAX_HTTP_CLIENTS];
-    struct lanner_shared *mcu_state;
+    struct lanner_shared *mcu_info;
     struct timeval last_restart;
     struct timeval last_dev_check;
     FILE* logfile;

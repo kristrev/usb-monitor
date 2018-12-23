@@ -246,7 +246,14 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
     //This is not very clean, lanner state should ideally be completely
     //isolated. However, I prefer this approach to iterating through ports and
     //finding the first Lanner port (for example)
-    ctx->mcu_state = l_shared;
+    ctx->mcu_info = l_shared;
 
     return 0;
+}
+
+void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
+{
+    struct lanner_shared *l_shared = ctx->mcu_info;
+
+    l_shared->mcu_state = LANNER_MCU_WRITING;
 }
