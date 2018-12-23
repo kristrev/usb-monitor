@@ -236,7 +236,8 @@ static void lanner_handler_start_private_timer(struct lanner_shared *l_shared,
 
     l_shared->mcu_timeout_handle->timeout_clock = cur_time + timeout_ms;
 
-    backend_insert_timeout(NULL, l_shared->mcu_timeout_handle);
+    backend_insert_timeout(l_shared->ctx->event_loop,
+                           l_shared->mcu_timeout_handle);
 }
 
 static void lanner_handler_write_cmd_buf(struct lanner_shared *l_shared)
@@ -486,6 +487,7 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
         lanner_handler_cleanup_shared(l_shared);
         return 1;
     }
+
     if (!(l_shared->mcu_timeout_handle = backend_event_loop_add_timeout(ctx->event_loop,
                                                                         0,
                                                                         lanner_handle_private_timeout,
