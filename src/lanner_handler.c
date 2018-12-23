@@ -211,6 +211,44 @@ static void lanner_handler_write_cmd_buf(struct lanner_shared *l_shared)
                               l_shared->mcu_epoll_handle);
 }
 
+static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
+{
+    struct usb_port *itr;
+    struct lanner_port *l_port;
+
+    LIST_FOREACH(itr, &(l_shared->ctx->port_list), port_next) {
+        if (itr->port_type != PORT_TYPE_LANNER) {
+            continue;
+        }
+
+        l_port = (struct lanner_port*) itr;
+
+        if (!(l_shared->pending_ports_mask & l_port->bitmask)) {
+            continue;
+        }
+
+        if (l_port->cur_cmd == CMD_ENABLE) {
+            l_port->enabled = 1;
+            l_port->pwr_state = 1;
+
+            //The reason we can't just set mask to 0, is that RESTART needs
+            //to be handled a bit special
+            l_shared->pending_ports_mask &= ~l_port->bitmask;
+        } else if (l_port->cur_cmd == CMD_DISABLE) {
+            l_port->enabled = 0;
+            l_port->pwr_state = 0;
+            l_shared->pending_ports_mask &= ~l_port->bitmask;
+        }
+    }
+
+    USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "MCU mask after OK: %u\n",
+                           l_shared->pending_ports_mask);
+
+    if (!l_shared->pending_ports_mask) {
+        l_shared->mcu_state = LANNER_MCU_IDLE;
+    }
+}
+
 static void lanner_handler_handle_input(struct lanner_shared *l_shared)
 {
     uint8_t input_buf_tmp[256] = {0};
@@ -251,10 +289,12 @@ static void lanner_handler_handle_input(struct lanner_shared *l_shared)
 
     if (!strncmp(LANNER_HANDLER_OK_REPLY, l_shared->buf_input,
                  strlen(LANNER_HANDLER_OK_REPLY))) {
-        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "MCU repled OK\n");
+        lanner_handler_ok_reply(l_shared);
     } else {
         USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Read %zd bytes: %s\n",
                                numbytes, input_buf_tmp);
+
+        //START A TIME OR SOMETHING HERE
     }
 }
 
