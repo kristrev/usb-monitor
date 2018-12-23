@@ -197,16 +197,14 @@ void usb_monitor_check_reset_cb(void *ptr)
     usb_helpers_reset_all_ports(ctx, 0);
 }
 
-//This function is called for every iteration + every second. Latter is needed
-//in case of restart
-void usb_monitor_itr_cb(void *ptr)
+//This function is called every second.
+void usb_monitor_1sec_timeout_cb(void *ptr)
 {
     struct usb_monitor_ctx *ctx = ptr;
     struct timeval tv = {0 ,0};
 
     //First, check for any of libusb's timers. We are incontrol of timer, so no
     //need for this function to block
-
     libusb_unlock_events(NULL);
     libusb_handle_events_timeout_completed(NULL, &tv, NULL);
     libusb_lock_events(NULL);
