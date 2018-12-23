@@ -173,7 +173,9 @@ static void lanner_handler_write_cmd_buf(struct lanner_shared *l_shared)
     struct usb_monitor_ctx *ctx = l_shared->ctx;
     //uint8_t bytes_to_write = l_shared->cmd_buf_strlen - l_shared->cmd_buf_progress;
     uint8_t bytes_to_write = 1;
-    ssize_t numbytes = write(l_shared->mcu_fd, l_shared->cmd_buf, bytes_to_write);
+    ssize_t numbytes = write(l_shared->mcu_fd,
+                             l_shared->cmd_buf + l_shared->cmd_buf_progress,
+                             bytes_to_write);
     uint32_t monitor_events;
 
     if (numbytes == -1) {
