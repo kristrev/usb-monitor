@@ -329,6 +329,7 @@ static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
     if (!l_shared->pending_ports_mask) {
         l_shared->mcu_state = LANNER_MCU_IDLE;
     } else {
+        l_shared->mcu_state = LANNER_MCU_WRITING;
         lanner_handler_start_private_timer(l_shared, LANNER_HANDLER_RESTART_MS);
     }
 }
