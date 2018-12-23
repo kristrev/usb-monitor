@@ -131,6 +131,54 @@ static uint8_t lanner_handler_open_mcu(struct lanner_shared *l_shared)
         return 1;
     }
 
+    // Configuration steps taken from: https://en.wikibooks.org/wiki/Serial_Programming/termios
+    //
+    // Input flags - Turn off input processing
+    //
+    // convert break to null byte, no CR to NL translation,
+    // no NL to CR translation, don't mark parity errors or breaks
+    // no input parity check, don't strip high bit off,
+    // no XON/XOFF software flow control
+    //
+    mcu_attr.c_iflag &= ~(IGNBRK | BRKINT | ICRNL |
+                        INLCR | PARMRK | INPCK | ISTRIP | IXON);
+
+    //
+    // Output flags - Turn off output processing
+    //
+    // no CR to NL translation, no NL to CR-NL translation,
+    // no NL to CR translation, no column 0 CR suppression,
+    // no Ctrl-D suppression, no fill characters, no case mapping,
+    // no local output processing
+    //
+    // mcu_attr.c_oflag &= ~(OCRNL | ONLCR | ONLRET |
+    //                     ONOCR | ONOEOT| OFILL | OLCUC | OPOST);
+    mcu_attr.c_oflag = 0;
+
+    //
+    // No line processing
+    //
+    // echo off, echo newline off, canonical mode off,
+    // extended input processing off, signal chars off
+    //
+    mcu_attr.c_lflag &= ~(ECHO | ECHONL | ICANON | IEXTEN | ISIG);
+
+    //
+    // Turn off character processing
+    //
+    // clear current char size mask, no parity checking,
+    // no output processing, force 8 bit input
+    //
+    mcu_attr.c_cflag &= ~(CSIZE | PARENB);
+    mcu_attr.c_cflag |= CS8;
+
+    //
+    // One input byte is enough to return from read()
+    // Inter-character timer off
+    //
+    mcu_attr.c_cc[VMIN]  = 1;
+    mcu_attr.c_cc[VTIME] = 0;
+
     if (cfsetospeed(&mcu_attr, B57600)) {
         fprintf(stderr, "Setting speed failed: %s (%d)\n", strerror(errno),
                 errno);
