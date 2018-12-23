@@ -380,7 +380,8 @@ static uint8_t usb_monitor_configure(struct usb_monitor_ctx *ctx, uint8_t sock)
 
     //We handle maximum of five concurrent clients
     ctx->clients_map = 0x1F;
-    ctx->event_loop = backend_event_loop_create(); 
+    ctx->event_loop = backend_event_loop_create();
+    ctx->event_loop->itr_data = ctx;
 
     for (i = 0; i < MAX_HTTP_CLIENTS; i++)
         ctx->clients[i] = NULL;
