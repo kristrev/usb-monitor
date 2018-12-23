@@ -294,7 +294,6 @@ static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
 
     if (!l_shared->pending_ports_mask) {
         l_shared->mcu_state = LANNER_MCU_IDLE;
-        l_shared->pending_ports_mask = 0;
     }
 }
 
