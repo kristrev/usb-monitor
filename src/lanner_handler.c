@@ -372,7 +372,7 @@ static void lanner_handler_handle_input(struct lanner_shared *l_shared)
         return;
     }
 
-    if (strncmp(LANNER_HANDLER_OK_REPLY, l_shared->buf_input,
+    if (!strncmp(LANNER_HANDLER_OK_REPLY, l_shared->buf_input,
                  strlen(LANNER_HANDLER_OK_REPLY))) {
         lanner_handler_ok_reply(l_shared);
     } else {
