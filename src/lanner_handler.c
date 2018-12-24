@@ -99,7 +99,6 @@ static uint8_t lanner_handler_add_port(struct usb_monitor_ctx *ctx,
     //This is the bitmask used to enable/disable the port. The reason bit is
     //not zero-indexed in config, is to be consistent with Lanner tools/doc
     port->bitmask = 1 << (bit - 1);
-    port->cur_state = LANNER_STATE_ON;
 
     //If we get into the situation where multiple paths are controlled by the
     //same bit, we need to implement a lookup here (similar to gpio and
