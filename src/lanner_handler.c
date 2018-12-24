@@ -31,8 +31,6 @@ static int32_t lanner_update_port(struct usb_port *port, uint8_t cmd)
     struct lanner_port *l_port = (struct lanner_port*) port;
     struct lanner_shared *l_shared = l_port->shared_info;
 
-    return 503;
-
     //Order of operations here is:
     //* Return an error if shared is not IDLE/PENDING
     //* Set cmd of port to whatever is stored
