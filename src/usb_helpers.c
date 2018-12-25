@@ -279,15 +279,17 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
         if (port->num_retrans == USB_RETRANS_LIMIT) {
             port->num_retrans = 0;
             if (port->msg_mode != RESET) {
+                //If restart fails, we want to try again right away. Do that
+                //after timer expires next time.
                 if (port->update(port, CMD_RESTART)) {
                     port->num_retrans = USB_RETRANS_LIMIT;
-                    usb_helpers_start_timeout(port, DEFAULT_TIMEOUT_SEC);
+                } else {
+                    return;
                 }
             }
-            return;
+        } else {
+            port->num_retrans++;
         }
-
-        port->num_retrans++;
     /*} else {
         if (++port->ping_cnt == PING_OUTPUT) {
             USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO,
