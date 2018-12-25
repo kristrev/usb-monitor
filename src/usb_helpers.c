@@ -280,6 +280,7 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
             port->num_retrans = 0;
             if (port->msg_mode != RESET) {
                 if (port->update(port, CMD_RESTART)) {
+                    port->num_retrans = USB_RETRANS_LIMIT;
                     usb_helpers_start_timeout(port, DEFAULT_TIMEOUT_SEC);
                 }
             }
