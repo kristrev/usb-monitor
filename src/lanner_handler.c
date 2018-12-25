@@ -37,7 +37,7 @@ static int32_t lanner_update_port(struct usb_port *port, uint8_t cmd)
     //* Update bitmask of shared
     if (l_shared->mcu_state != LANNER_MCU_IDLE &&
         l_shared->mcu_state != LANNER_MCU_PENDING) {
-        //TODO: Update to return 503 instead
+        USB_DEBUG_PRINT_SYSLOG(l_port->ctx, LOG_INFO, "Lanner MCU busy\n");
         return 503;
     }
 
@@ -268,7 +268,7 @@ static void lanner_handler_write_cmd_buf(struct lanner_shared *l_shared)
         } else {
             //I don't know what to do here? Can it happen? Can we recover? Just
             //add EPOLLIN and hope for the best? exit?
-            USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR, "Failed to write to MCU: "
+            USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR, "Failed to write to Lanner MCU: "
                                    "%s (%d)\n", strerror(errno), errno);
         }
 
@@ -333,7 +333,7 @@ static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
         }
     }
 
-    USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "MCU mask after OK: %u\n",
+    USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Lanner MCU mask after OK: %u\n",
                            l_shared->pending_ports_mask);
 
     if (!l_shared->pending_ports_mask) {
@@ -363,7 +363,7 @@ static void lanner_handler_handle_input(struct lanner_shared *l_shared)
     //port will be enabled again by our watchdog.
     if (numbytes + l_shared->input_progress > (sizeof(l_shared->buf_input) - 1)) {
         USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_ERR,
-                               "Oversized reply from MCU\n");
+                               "Oversized reply from Lanner MCU\n");
         exit(EXIT_FAILURE);
     }
 
@@ -445,7 +445,7 @@ void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
 
     snprintf(l_shared->cmd_buf, sizeof(l_shared->cmd_buf),
              "SET DIGITAL_OUT %u\n", mcu_bitmask);
-    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "MCU cmd %s", l_shared->cmd_buf);
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Lanner MCU cmd %s", l_shared->cmd_buf);
 
     memset(l_shared->buf_input, 0, sizeof(l_shared->buf_input));
     l_shared->input_progress = 0;
