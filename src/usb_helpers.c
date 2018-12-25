@@ -275,15 +275,16 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
         USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_ERR,
                 "Ping failed for %.4x:%.4x\n",
                 port->vp.vid, port->vp.pid);
-        port->num_retrans++;
 
-        if (port->num_retrans >= USB_RETRANS_LIMIT) {
+        if (port->num_retrans == USB_RETRANS_LIMIT) {
             port->num_retrans = 0;
             if (port->msg_mode != RESET) {
                 port->update(port, CMD_RESTART);
             }
             return;
         }
+
+        port->num_retrans++;
     /*} else {
         if (++port->ping_cnt == PING_OUTPUT) {
             USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO,
