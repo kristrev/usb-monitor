@@ -133,7 +133,7 @@ static uint8_t lanner_handler_open_mcu(struct lanner_shared *l_shared)
     }
 
     //Baud rate is 57600 according to documentation
-    retval = tcgetattr(fd, &mcu_attr); 
+    retval = tcgetattr(fd, &mcu_attr);
 
     if (retval) {
         fprintf(stderr, "Fetching terminal attributes failed: %s (%d)\n",
@@ -515,7 +515,7 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
                            l_shared->mcu_fd);
 
     for (i = 0; i < json_arr_len; i++) {
-        json_port = json_object_array_get_idx(json, i); 
+        json_port = json_object_array_get_idx(json, i);
 
         json_object_object_foreach(json_port, key, val) {
             if (!strcmp(key, "path") && json_object_is_type(val, json_type_array)) {
@@ -533,7 +533,7 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
             lanner_handler_cleanup_shared(l_shared);
             return 1;
         }
-       
+
         for (j = 0; j < json_object_array_length(path_array); j++) {
             json_path = json_object_array_get_idx(path_array, j);
             path_org = json_object_get_string(json_path);
