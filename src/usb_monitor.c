@@ -287,9 +287,9 @@ static void usb_monitor_start_event_loop(struct usb_monitor_ctx *ctx)
     }
 
     if (!ctx->disable_auto_restart &&
-        !backend_event_loop_add_timeout(ctx->event_loop, cur_time + 60000,
+        !backend_event_loop_add_timeout(ctx->event_loop, cur_time + 120000,
                                         usb_monitor_check_reset_cb,
-                                        ctx, 60000, true)) {
+                                        ctx, 120000, true)) {
         return;
     }
 
