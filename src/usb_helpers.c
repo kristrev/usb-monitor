@@ -271,7 +271,7 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
         return;
     }
 
-    //if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
+    if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
         USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_ERR,
                 "Ping failed for %.4x:%.4x\n",
                 port->vp.vid, port->vp.pid);
@@ -290,7 +290,7 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
         } else {
             port->num_retrans++;
         }
-    /*} else {
+    } else {
         if (++port->ping_cnt == PING_OUTPUT) {
             USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_INFO,
                     "Ping success for %.4x:%.4x\n",
@@ -298,7 +298,7 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
             port->ping_cnt = 0;
         }
         port->num_retrans = 0;
-    }*/
+    }
 
     //We can only get into this function after timeout has been handeled and
     //removed from timeout list. It is therefore safe to add the port to the
