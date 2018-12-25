@@ -479,7 +479,6 @@ static struct gpio_port* gpio_handler_get_port(struct usb_monitor_ctx *ctx,
     }
 
     return port;
-
 }
 
 static struct gpio_port* gpio_handler_create_port(struct usb_monitor_ctx *ctx,

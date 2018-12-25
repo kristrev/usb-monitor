@@ -18,6 +18,7 @@
 #define BACKEND_EVENT_LOOP_H
 
 #include <sys/queue.h>
+#include <stdbool.h>
 
 #define MAX_EPOLL_EVENTS 10
 
@@ -49,6 +50,7 @@ struct backend_timeout_handle{
     LIST_ENTRY(backend_timeout_handle) timeout_next;
     uint32_t intvl;
     void *data;
+    bool auto_free;
 };
 
 struct backend_event_loop{
@@ -68,11 +70,16 @@ struct backend_event_loop* backend_event_loop_create();
 int32_t backend_event_loop_update(struct backend_event_loop *del, uint32_t events,
         int32_t op, int32_t fd, void *ptr);
 
+//For when we need to manually need to handle our timeouts
+void backend_insert_timeout(struct backend_event_loop *del,
+                            struct backend_timeout_handle *handle);
+void backend_delete_timeout(struct backend_timeout_handle *timeout);
+
 //Add a timeout which is controlled by main loop
 struct backend_timeout_handle* backend_event_loop_add_timeout(
         struct backend_event_loop *del, uint64_t timeout_clock,
         backend_timeout_cb timeout_cb, void *ptr,
-        uint32_t intvl);
+        uint32_t intvl, bool free_after_use);
 
 //Fill handle with ptr, fd, and cb. Used by create_epoll_handle and can be used
 //by applications that use a different allocater for handle

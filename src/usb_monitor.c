@@ -44,6 +44,7 @@
 #include "usb_monitor_callbacks.h"
 #include "socket_utility.h"
 #include "usb_monitor_client.h"
+#include "lanner_handler.h"
 
 //Kept global so that I can access it from the signal handler
 static struct usb_monitor_ctx *usbmon_ctx = NULL;
@@ -58,13 +59,23 @@ void usb_monitor_print_ports(struct usb_monitor_ctx *ctx)
     fprintf(ctx->logfile, "\n");
 }
 
+void usb_monitor_start_itr_cb(struct usb_monitor_ctx *ctx)
+{
+    ctx->event_loop->itr_data = ctx;
+    ctx->event_loop->itr_cb = usb_monitor_itr_cb;
+}
+
+void usb_monitor_stop_itr_cb(struct usb_monitor_ctx *ctx)
+{
+    ctx->event_loop->itr_cb = ctx->event_loop->itr_data = NULL;
+}
 
 static uint8_t usb_monitor_parse_handlers(struct usb_monitor_ctx *ctx,
                                           struct json_object *handlers)
 {
     int handlers_len = 0, i;
     uint8_t unknown_elem = 0;
-    const char *handler_name = NULL;
+    const char *handler_name = NULL, *mcu_path = NULL;
     struct json_object *arr_obj, *handler_obj = NULL;
     
     handlers_len = json_object_array_length(handlers);
@@ -82,6 +93,10 @@ static uint8_t usb_monitor_parse_handlers(struct usb_monitor_ctx *ctx,
             } else if(!strcmp(key, "ports")) {
                 handler_obj = val;
                 continue;
+            } else if (!strcmp(key, "mcu_path")) {
+                //This value is only used by lanner and don't really belong in
+                //the main, generic object. Think of a better structure
+                mcu_path = json_object_get_string(val);
             } else {
                 unknown_elem = 1;
                 break;
@@ -94,8 +109,13 @@ static uint8_t usb_monitor_parse_handlers(struct usb_monitor_ctx *ctx,
         }
 
         if (!strcmp("GPIO", handler_name)) {
-            if (gpio_handler_parse_json(ctx, handler_obj))
+            if (gpio_handler_parse_json(ctx, handler_obj)) {
                 return 1;
+            }
+        } else if (!strcmp("Lanner", handler_name)) {
+            if (lanner_handler_parse_json(ctx, handler_obj, mcu_path)) {
+                return 1;
+            }
         } else {
             fprintf(stderr, "Unknown handler in JSON\n");
             return 1;
@@ -253,21 +273,25 @@ static void usb_monitor_start_event_loop(struct usb_monitor_ctx *ctx)
     //These timeout pointers will live for as long as the application.
     //Therefore, there is no need to save them anywhere
     if (!backend_event_loop_add_timeout(ctx->event_loop, cur_time + 1000,
-                                        usb_monitor_itr_cb, ctx, 1000))
+                                        usb_monitor_1sec_timeout_cb, ctx, 1000,
+                                        true)) {
         return;
+    }
    
     //Do not make this one a multiple of reset_cb timeout. There is no need
     //resetting and checking at the same time
     if (!backend_event_loop_add_timeout(ctx->event_loop, cur_time + 25000,
                                         usb_monitor_check_devices_cb,
-                                        ctx, 25000))
+                                        ctx, 25000, true)) {
         return;
+    }
 
     if (!ctx->disable_auto_restart &&
-        !backend_event_loop_add_timeout(ctx->event_loop, cur_time + 60000,
+        !backend_event_loop_add_timeout(ctx->event_loop, cur_time + 120000,
                                         usb_monitor_check_reset_cb,
-                                        ctx, 60000))
+                                        ctx, 120000, true)) {
         return;
+    }
 
     backend_event_loop_run(ctx->event_loop);
 }
@@ -363,7 +387,7 @@ static uint8_t usb_monitor_configure(struct usb_monitor_ctx *ctx, uint8_t sock)
 
     //We handle maximum of five concurrent clients
     ctx->clients_map = 0x1F;
-    ctx->event_loop = backend_event_loop_create(); 
+    ctx->event_loop = backend_event_loop_create();
 
     for (i = 0; i < MAX_HTTP_CLIENTS; i++)
         ctx->clients[i] = NULL;

@@ -30,10 +30,14 @@ void usb_monitor_usb_event_cb(void *ptr, int32_t fd, uint32_t events);
 //These are the three timeout callbacks
 void usb_monitor_check_devices_cb(void *ptr);
 void usb_monitor_check_reset_cb(void *ptr);
-void usb_monitor_itr_cb(void *ptr);
+void usb_monitor_1sec_timeout_cb(void *ptr);
 
 //Libusb file descriptor callbacks
 void usb_monitor_libusb_fd_add(int fd, short events, void *data);
 void usb_monitor_libusb_fd_remove(int fd, void *data);
+
+//This is a callback is used to check + start updating the power of different
+//modems on Lanner devices
+void usb_monitor_itr_cb(void *ptr);
 
 #endif

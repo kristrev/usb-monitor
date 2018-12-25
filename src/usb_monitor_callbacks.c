@@ -29,6 +29,7 @@
 #include "backend_event_loop.h"
 
 #include "gpio_handler.h"
+#include "lanner_handler.h"
 
 /* libusb-callbacks for when devices are added/removed. It is also called
  * manually when we detect a hub, since we risk devices being added before we
@@ -97,9 +98,9 @@ static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
         port->msg_mode = PING;
         usb_helpers_start_timeout(port, ADDED_TIMEOUT_SEC);
 
-	if (usb_helpers_check_bad_id(ctx, port)) {
-		port->update(port, CMD_RESTART);
-	}
+	    if (usb_helpers_check_bad_id(ctx, port)) {
+		    port->update(port, CMD_RESTART);
+	    }
     }
 }
 
@@ -197,16 +198,14 @@ void usb_monitor_check_reset_cb(void *ptr)
     usb_helpers_reset_all_ports(ctx, 0);
 }
 
-//This function is called for every iteration + every second. Latter is needed
-//in case of restart
-void usb_monitor_itr_cb(void *ptr)
+//This function is called every second.
+void usb_monitor_1sec_timeout_cb(void *ptr)
 {
     struct usb_monitor_ctx *ctx = ptr;
     struct timeval tv = {0 ,0};
 
     //First, check for any of libusb's timers. We are incontrol of timer, so no
     //need for this function to block
-
     libusb_unlock_events(NULL);
     libusb_handle_events_timeout_completed(NULL, &tv, NULL);
     libusb_lock_events(NULL);
@@ -233,3 +232,10 @@ void usb_monitor_libusb_fd_remove(int fd, void *data)
     close(fd);
 }
 
+void usb_monitor_itr_cb(void *ptr)
+{
+    struct usb_monitor_ctx *ctx = ptr;
+
+    lanner_handler_start_mcu_update(ctx);
+    usb_monitor_stop_itr_cb(ctx);
+}

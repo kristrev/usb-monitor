@@ -267,20 +267,28 @@ static void usb_helpers_ping_cb(struct libusb_transfer *transfer)
     //With asynchrnous enable/disale/reset requests, we might be waiting for a
     //"ping" reply when request occurs. If this happens and reply arrives before
     //device is removed, ignore ping reply
-    if (!port->enabled || port->msg_mode != PING)
+    if (!port->enabled || port->msg_mode != PING) {
         return;
+    }
 
     if (transfer->status != LIBUSB_TRANSFER_COMPLETED) {
         USB_DEBUG_PRINT_SYSLOG(port->ctx, LOG_ERR,
                 "Ping failed for %.4x:%.4x\n",
                 port->vp.vid, port->vp.pid);
-        port->num_retrans++;
 
         if (port->num_retrans == USB_RETRANS_LIMIT) {
             port->num_retrans = 0;
-            if (port->msg_mode != RESET)
-                port->update(port, CMD_RESTART);
-            return;
+            if (port->msg_mode != RESET) {
+                //If restart fails, we want to try again right away. Do that
+                //after timer expires next time.
+                if (port->update(port, CMD_RESTART)) {
+                    port->num_retrans = USB_RETRANS_LIMIT;
+                } else {
+                    return;
+                }
+            }
+        } else {
+            port->num_retrans++;
         }
     } else {
         if (++port->ping_cnt == PING_OUTPUT) {
@@ -444,11 +452,13 @@ void usb_helpers_reset_all_ports(struct usb_monitor_ctx *ctx, uint8_t forced)
     LIST_FOREACH(itr, &(ctx->port_list), port_next) {
         //Only restart enabled ports which are not connected and are currently
         //not being reset or probed
-        if (itr->msg_mode == RESET || !itr->enabled || itr->msg_mode == PROBE)
+        if (itr->msg_mode == RESET || !itr->enabled || itr->msg_mode == PROBE) {
             continue;
+        }
 
-        if (forced || itr->status == PORT_NO_DEV_CONNECTED)
+        if (forced || itr->status == PORT_NO_DEV_CONNECTED) {
             itr->update(itr, CMD_RESTART);
+        }
     }
 }
 
