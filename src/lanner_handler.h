@@ -51,6 +51,9 @@ struct lanner_shared {
     uint8_t cmd_buf_strlen;
     uint8_t cmd_buf_progress;
     uint8_t input_progress;
+
+    uint8_t mcu_bitmask;
+    uint8_t mcu_bitmask_to_write;
 };
 
 struct lanner_port {

@@ -296,18 +296,77 @@ static void lanner_handler_write_cmd_buf(struct lanner_shared *l_shared)
                               l_shared->mcu_epoll_handle);
 }
 
+static uint8_t lanner_handler_create_mcu_bitmask(struct lanner_shared *l_shared,
+                                                 uint8_t bitmask_from_mcu)
+{
+    struct usb_port *itr;
+    struct lanner_port *l_port;
+    uint8_t bitmask_to_mcu = bitmask_from_mcu, cmd_to_check;
+
+    //TODO: Separate function
+    LIST_FOREACH(itr, &(l_shared->ctx->port_list), port_next) {
+        if (itr->port_type != PORT_TYPE_LANNER) {
+            continue;
+        }
+
+        l_port = (struct lanner_port*) itr;
+
+        if (!(l_shared->pending_ports_mask & l_port->bitmask)) {
+            continue;
+        }
+
+        cmd_to_check = l_port->cur_cmd == CMD_RESTART ? l_port->restart_cmd :
+                                                        l_port->cur_cmd;
+
+        //In order to enable a port, we disable the bit
+        if (cmd_to_check == CMD_ENABLE) {
+             bitmask_to_mcu &= ~l_port->bitmask;
+        } else {
+            bitmask_to_mcu |= l_port->bitmask;
+        }
+    }
+
+    return bitmask_to_mcu;
+}
+
+static void lanner_handler_set_digital_out(struct lanner_shared *l_shared)
+{
+    l_shared->mcu_bitmask_to_write = lanner_handler_create_mcu_bitmask(l_shared,
+                                                                       (uint8_t) l_shared->mcu_bitmask);
+
+    USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_ERR,
+                           "Bitmask from mcu %u to mcu %u\n",
+                           l_shared->mcu_bitmask,
+                           l_shared->mcu_bitmask_to_write);
+
+    snprintf(l_shared->cmd_buf, sizeof(l_shared->cmd_buf),
+             "SET DIGITAL_OUT %u\n", l_shared->mcu_bitmask_to_write);
+    l_shared->cmd_buf_strlen = strlen(l_shared->cmd_buf);
+    l_shared->cmd_buf_progress = 0;
+
+    memset(l_shared->buf_input, 0, sizeof(l_shared->buf_input));
+    l_shared->input_progress = 0;
+
+    l_shared->mcu_state = LANNER_MCU_WRITING;
+
+    USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Lanner MCU cmd %s",
+                           l_shared->cmd_buf);
+
+    lanner_handler_write_cmd_buf(l_shared);
+}
+
 static void lanner_handler_reply(struct lanner_shared *l_shared)
 {
-    uint32_t cur_bitmask = 0;
     int n;
 
     //The Lanner MCU is available in two different versions (at least). On one
     //version, the GET_DIGITAL_OUT reply has not space after "=". On the other,
     //there is a space
-    n = sscanf(l_shared->buf_input, LANNER_HANDLER_REPLY "= %u", &cur_bitmask);
+    n = sscanf(l_shared->buf_input, LANNER_HANDLER_REPLY "= %u",
+               &(l_shared->mcu_bitmask));
     if (!n) {
         n = sscanf(l_shared->buf_input, LANNER_HANDLER_REPLY "=%u",
-                   &cur_bitmask);
+                   &(l_shared->mcu_bitmask));
     }
 
     if (!n) {
@@ -317,7 +376,7 @@ static void lanner_handler_reply(struct lanner_shared *l_shared)
         exit(EXIT_FAILURE);
     }
 
-    USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_ERR, "Bitmask %u\n", cur_bitmask);
+    lanner_handler_set_digital_out(l_shared);
 }
 
 static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
@@ -361,6 +420,9 @@ static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
             }
         }
     }
+
+    l_shared->mcu_bitmask = l_shared->mcu_bitmask_to_write;
+    l_shared->mcu_bitmask_to_write = 0;
 
     USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Lanner MCU mask after OK: %u\n",
                            l_shared->pending_ports_mask);
@@ -474,44 +536,9 @@ void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
 
     if (l_shared->mcu_state == LANNER_MCU_PENDING) {
         lanner_handler_get_digital_out(ctx);
-        return;
+    } else {
+        lanner_handler_set_digital_out(ctx->mcu_info);
     }
-
-    l_shared->mcu_state = LANNER_MCU_WRITING;
-
-    LIST_FOREACH(itr, &(ctx->port_list), port_next) {
-        if (itr->port_type != PORT_TYPE_LANNER) {
-            continue;
-        }
-
-        l_port = (struct lanner_port*) itr;
-
-        //We write the state for all ports to the MCU, not just those that are updated
-        if (!(l_shared->pending_ports_mask & l_port->bitmask)) {
-            //Initial value of mcu_bitmask is 0, which means that all ports
-            //will be enabled. We need to set the bits of the ports that are
-            //disabled
-            if (!l_port->pwr_state) {
-                mcu_bitmask |= l_port->bitmask;
-            }
-        } else {
-            if (l_port->cur_cmd == CMD_DISABLE ||
-                (l_port->cur_cmd == CMD_RESTART && l_port->restart_cmd == CMD_DISABLE)) {
-                mcu_bitmask |= l_port->bitmask;
-            }
-        }
-    }
-
-    snprintf(l_shared->cmd_buf, sizeof(l_shared->cmd_buf),
-             "SET DIGITAL_OUT %u\n", mcu_bitmask);
-    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Lanner MCU cmd %s", l_shared->cmd_buf);
-
-    memset(l_shared->buf_input, 0, sizeof(l_shared->buf_input));
-    l_shared->input_progress = 0;
-    l_shared->cmd_buf_strlen = strlen(l_shared->cmd_buf);
-    l_shared->cmd_buf_progress = 0;
-
-    lanner_handler_write_cmd_buf(l_shared);
 }
 
 uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
