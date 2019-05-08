@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#define LANNER_HANDLER_REPLY "100 DIGITAL_OUT"
 #define LANNER_HANDLER_OK_REPLY "100 OK"
 
 #define LANNER_HANDLER_RESTART_MS   5000
@@ -17,6 +18,10 @@ enum {
     LANNER_MCU_IDLE,
     //There are pending operations, but we have not started updating yet
     LANNER_MCU_PENDING,
+    //We are reading from the MCU
+    LANNER_MCU_READING,
+    //Wait for MCU to reply with DIGITAL_OUT
+    LANNER_MCU_WAIT_REPLY,
     //We are writing to the MCU, MCU locked
     LANNER_MCU_WRITING,
     //We are waiting for OK from the MCU, MCU locked

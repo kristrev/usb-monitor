@@ -280,7 +280,12 @@ static void lanner_handler_write_cmd_buf(struct lanner_shared *l_shared)
     if (l_shared->cmd_buf_progress == l_shared->cmd_buf_strlen) {
         USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Done writing command\n");
         monitor_events = EPOLLIN;
-        l_shared->mcu_state = LANNER_MCU_WAIT_OK;
+
+        if (l_shared->mcu_state == LANNER_MCU_READING) {
+            l_shared->mcu_state = LANNER_MCU_WAIT_REPLY;
+        } else {
+            l_shared->mcu_state = LANNER_MCU_WAIT_OK;
+        }
     } else {
         //We need to wait for EPOLLOUT, we had a short write
         monitor_events = EPOLLIN | EPOLLOUT;
@@ -289,6 +294,30 @@ static void lanner_handler_write_cmd_buf(struct lanner_shared *l_shared)
     backend_event_loop_update(ctx->event_loop, monitor_events,
                               EPOLL_CTL_MOD, l_shared->mcu_fd,
                               l_shared->mcu_epoll_handle);
+}
+
+static void lanner_handler_reply(struct lanner_shared *l_shared)
+{
+    uint32_t cur_bitmask = 0;
+    int n;
+
+    //The Lanner MCU is available in two different versions (at least). On one
+    //version, the GET_DIGITAL_OUT reply has not space after "=". On the other,
+    //there is a space
+    n = sscanf(l_shared->buf_input, LANNER_HANDLER_REPLY "= %u", &cur_bitmask);
+    if (!n) {
+        n = sscanf(l_shared->buf_input, LANNER_HANDLER_REPLY "=%u",
+                   &cur_bitmask);
+    }
+
+    if (!n) {
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_ERR, "No bitmask found\n");
+        //I do not know what to here except fail, we don't know what we are
+        //working with
+        exit(EXIT_FAILURE);
+    }
+
+    USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_ERR, "Bitmask %u\n", cur_bitmask);
 }
 
 static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
@@ -352,7 +381,8 @@ static void lanner_handler_handle_input(struct lanner_shared *l_shared)
     uint8_t i;
     bool found_newline = false;
 
-    if (l_shared->mcu_state != LANNER_MCU_WAIT_OK || numbytes <= 0) {
+    if ((l_shared->mcu_state != LANNER_MCU_WAIT_OK &&
+         l_shared->mcu_state != LANNER_MCU_WAIT_REPLY) || numbytes <= 0) {
         return;
     }
 
@@ -382,8 +412,15 @@ static void lanner_handler_handle_input(struct lanner_shared *l_shared)
         return;
     }
 
-    if (!strncmp(LANNER_HANDLER_OK_REPLY, l_shared->buf_input,
-                 strlen(LANNER_HANDLER_OK_REPLY))) {
+    USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "BUFFER %s\n", l_shared->buf_input);
+
+    if (l_shared->mcu_state == LANNER_MCU_WAIT_REPLY &&
+        !strncmp(LANNER_HANDLER_REPLY, l_shared->buf_input,
+                 strlen(LANNER_HANDLER_REPLY))) {
+        lanner_handler_reply(l_shared);
+    } else if (l_shared->mcu_state == LANNER_MCU_WAIT_OK &&
+               !strncmp(LANNER_HANDLER_OK_REPLY, l_shared->buf_input,
+                        strlen(LANNER_HANDLER_OK_REPLY))) {
         lanner_handler_ok_reply(l_shared);
     } else {
         USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Read %zd bytes: %s\n",
@@ -411,12 +448,34 @@ static void lanner_handle_private_timeout(void *ptr)
     lanner_handler_start_mcu_update(ptr);
 }
 
+static void lanner_handler_get_digital_out(struct usb_monitor_ctx *ctx)
+{
+    struct lanner_shared *l_shared = ctx->mcu_info;
+
+    snprintf(l_shared->cmd_buf, sizeof(l_shared->cmd_buf), "GET DIGITAL_OUT\n");
+
+    l_shared->cmd_buf_strlen = strlen(l_shared->cmd_buf);
+    l_shared->cmd_buf_progress = 0;
+
+    memset(l_shared->buf_input, 0, sizeof(l_shared->buf_input));
+    l_shared->input_progress = 0;
+
+    l_shared->mcu_state = LANNER_MCU_READING;
+
+    lanner_handler_write_cmd_buf(l_shared);
+}
+
 void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
 {
     struct usb_port *itr = NULL;
     struct lanner_port *l_port;
     struct lanner_shared *l_shared = ctx->mcu_info;
     uint8_t mcu_bitmask = 0;
+
+    if (l_shared->mcu_state == LANNER_MCU_PENDING) {
+        lanner_handler_get_digital_out(ctx);
+        return;
+    }
 
     l_shared->mcu_state = LANNER_MCU_WRITING;
 
