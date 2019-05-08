@@ -429,6 +429,10 @@ static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
 
     if (!l_shared->pending_ports_mask) {
         l_shared->mcu_state = LANNER_MCU_IDLE;
+
+        //Do in itr cb
+        close(l_shared->mcu_fd);
+
     } else {
         l_shared->mcu_state = LANNER_MCU_WRITING;
         lanner_handler_start_private_timer(l_shared, LANNER_HANDLER_RESTART_MS);
@@ -526,6 +530,20 @@ void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
 {
     struct lanner_shared *l_shared = ctx->mcu_info;
 
+    //NEW STATES FOR THESE TWO
+    //Lock file
+
+    //Open device
+    if (lanner_handler_open_mcu(l_shared)) {
+        //START TIMER, SET STATE
+        return;
+    }
+
+    //Update epoll handle
+    l_shared->mcu_epoll_handle->fd = l_shared->mcu_fd;
+    backend_event_loop_update(ctx->event_loop, EPOLLIN, EPOLL_CTL_ADD,
+                              l_shared->mcu_fd, l_shared->mcu_epoll_handle);
+
     if (l_shared->mcu_state == LANNER_MCU_PENDING) {
         lanner_handler_get_digital_out(ctx);
     } else {
@@ -564,13 +582,8 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
     l_shared->mcu_state = LANNER_MCU_IDLE;
     l_shared->mcu_path = mcu_path;
 
-    if (lanner_handler_open_mcu(l_shared)) {
-        lanner_handler_cleanup_shared(l_shared);
-        return 1;
-    }
-
     if (!(l_shared->mcu_epoll_handle = backend_create_epoll_handle(ctx,
-                                                                   l_shared->mcu_fd,
+                                                                   0,
                                                                    lanner_handler_event_cb,
                                                                    0))) {
         lanner_handler_cleanup_shared(l_shared);
@@ -634,11 +647,6 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
             free(path);
         }
     }
-
-    //Start monitoring for EPOLLIN events right away, we will just add a filter
-    //to the callback to prevent parsing data when in wrong state
-    backend_event_loop_update(ctx->event_loop, EPOLLIN, EPOLL_CTL_ADD,
-                              l_shared->mcu_fd, l_shared->mcu_epoll_handle);
 
     //This is not very clean, lanner state should ideally be completely
     //isolated. However, I prefer this approach to iterating through ports and
