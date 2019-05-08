@@ -116,7 +116,7 @@ static uint8_t lanner_handler_add_port(struct usb_monitor_ctx *ctx,
     return 0;
 }
 
-static void lanner_handle_flush_mcu(struct lanner_shared *l_shared)
+static void lanner_handler_flush_mcu(struct lanner_shared *l_shared)
 {
     uint8_t tmp_buf[255];
 
@@ -211,9 +211,23 @@ static uint8_t lanner_handler_open_mcu(struct lanner_shared *l_shared)
 
     l_shared->mcu_fd = fd;
 
-    lanner_handle_flush_mcu(l_shared);
-
     return 0;
+}
+
+static void lanner_flush_mcu(struct lanner_shared *l_shared)
+{
+    uint8_t buf_tmp[256];
+    int numbytes;
+
+    //Very simple flush, just read until we get an error (which will be EAGAIN
+    //or EWOULDBLOCK). This is good enough for now
+    while(1) {
+        numbytes = read(l_shared->mcu_fd, buf_tmp, sizeof(buf_tmp));
+
+        if (numbytes < 0) {
+            return;
+        }
+    }
 }
 
 static void lanner_handler_cleanup_shared(struct lanner_shared *l_shared)
@@ -549,6 +563,8 @@ static void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
                                                LANNER_HANDLER_RESTART_MS);
             return;
         }
+
+        lanner_handler_flush_mcu(l_shared);
 
         //Update epoll handle
         l_shared->mcu_epoll_handle->fd = l_shared->mcu_fd;
