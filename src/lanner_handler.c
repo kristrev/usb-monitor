@@ -484,11 +484,6 @@ static void lanner_handler_handle_input(struct lanner_shared *l_shared)
                !strncmp(LANNER_HANDLER_OK_REPLY, l_shared->buf_input,
                         strlen(LANNER_HANDLER_OK_REPLY))) {
         lanner_handler_ok_reply(l_shared);
-    } else {
-        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Read %zd bytes: %s\n",
-                               numbytes, input_buf_tmp);
-        l_shared->mcu_state = LANNER_MCU_WRITING;
-        lanner_handler_start_private_timer(l_shared, LANNER_HANDLER_RESTART_MS);
     }
 }
 
@@ -529,10 +524,7 @@ static void lanner_handler_get_digital_out(struct usb_monitor_ctx *ctx)
 
 void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
 {
-    struct usb_port *itr = NULL;
-    struct lanner_port *l_port;
     struct lanner_shared *l_shared = ctx->mcu_info;
-    uint8_t mcu_bitmask = 0;
 
     if (l_shared->mcu_state == LANNER_MCU_PENDING) {
         lanner_handler_get_digital_out(ctx);
