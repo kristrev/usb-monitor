@@ -236,6 +236,6 @@ void usb_monitor_itr_cb(void *ptr)
 {
     struct usb_monitor_ctx *ctx = ptr;
 
-    lanner_handler_start_mcu_update(ctx);
+    lanner_handler_itr_cb(ctx);
     usb_monitor_stop_itr_cb(ctx);
 }

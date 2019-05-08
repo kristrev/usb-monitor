@@ -16,6 +16,8 @@
 #include "lanner_handler.h"
 #include "backend_event_loop.h"
 
+static void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx);
+
 static void lanner_print_port(struct usb_port *port)
 {
     char buf[10] = {0};
@@ -428,11 +430,8 @@ static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
                            l_shared->pending_ports_mask);
 
     if (!l_shared->pending_ports_mask) {
-        l_shared->mcu_state = LANNER_MCU_IDLE;
-
-        //Do in itr cb
-        close(l_shared->mcu_fd);
-
+        l_shared->mcu_state = LANNER_MCU_UPDATE_DONE;
+        usb_monitor_start_itr_cb(l_port->ctx);
     } else {
         l_shared->mcu_state = LANNER_MCU_WRITING;
         lanner_handler_start_private_timer(l_shared, LANNER_HANDLER_RESTART_MS);
@@ -526,7 +525,7 @@ static void lanner_handler_get_digital_out(struct usb_monitor_ctx *ctx)
     lanner_handler_write_cmd_buf(l_shared);
 }
 
-void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
+static void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
 {
     struct lanner_shared *l_shared = ctx->mcu_info;
 
@@ -548,6 +547,19 @@ void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
         lanner_handler_get_digital_out(ctx);
     } else {
         lanner_handler_set_digital_out(ctx->mcu_info);
+    }
+}
+
+void lanner_handler_itr_cb(struct usb_monitor_ctx *ctx)
+{
+    struct lanner_shared *l_shared = ctx->mcu_info;
+
+    if (l_shared->mcu_state == LANNER_MCU_UPDATE_DONE) {
+        //Close file and clean lock, we are done
+        close(l_shared->mcu_fd);
+        l_shared->mcu_state = LANNER_MCU_IDLE;
+    } else {
+        lanner_handler_start_mcu_update(ctx);
     }
 }
 
@@ -601,9 +613,8 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
     }
 
 
-    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Lanner shared info. Path: %s "
-                           "FD: %d\n", l_shared->mcu_path,
-                           l_shared->mcu_fd);
+    USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Lanner shared info. Path: %s\n",
+                           l_shared->mcu_path);
 
     for (i = 0; i < json_arr_len; i++) {
         json_port = json_object_array_get_idx(json, i);

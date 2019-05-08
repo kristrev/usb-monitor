@@ -18,6 +18,9 @@ enum {
     LANNER_MCU_IDLE,
     //There are pending operations, but we have not started updating yet
     LANNER_MCU_PENDING,
+    //These two states are used as indications to the timeout handler
+    LANNER_MCU_LOCK,
+    LANNER_MCU_OPEN_FILE,
     //We are reading from the MCU
     LANNER_MCU_READING,
     //Wait for MCU to reply with DIGITAL_OUT
@@ -25,7 +28,8 @@ enum {
     //We are writing to the MCU, MCU locked
     LANNER_MCU_WRITING,
     //We are waiting for OK from the MCU, MCU locked
-    LANNER_MCU_WAIT_OK
+    LANNER_MCU_WAIT_OK,
+    LANNER_MCU_UPDATE_DONE,
 };
 
 struct backend_epoll_handle;
@@ -66,7 +70,7 @@ struct lanner_port {
 
 struct json_object;
 
-void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx);
+void lanner_handler_itr_cb(struct usb_monitor_ctx *ctx);
 
 uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
                                   struct json_object *json,
