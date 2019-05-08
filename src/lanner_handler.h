@@ -18,9 +18,6 @@ enum {
     LANNER_MCU_IDLE,
     //There are pending operations, but we have not started updating yet
     LANNER_MCU_PENDING,
-    //These two states are used as indications to the timeout handler
-    LANNER_MCU_LOCK,
-    LANNER_MCU_OPEN_FILE,
     //We are reading from the MCU
     LANNER_MCU_READING,
     //Wait for MCU to reply with DIGITAL_OUT
@@ -43,6 +40,7 @@ struct lanner_shared {
     struct backend_timeout_handle *mcu_timeout_handle;
 
     int mcu_fd;
+    int lock_fd;
     uint8_t mcu_state;
     //Mask of ports with a pending event
     uint8_t pending_ports_mask;
@@ -74,6 +72,7 @@ void lanner_handler_itr_cb(struct usb_monitor_ctx *ctx);
 
 uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
                                   struct json_object *json,
-                                  const char *mcu_path);
+                                  const char *mcu_path,
+                                  const char *mcu_lock_path);
 
 #endif

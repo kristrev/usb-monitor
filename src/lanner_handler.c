@@ -9,6 +9,7 @@
 #include <sys/epoll.h>
 #include <stdbool.h>
 #include <time.h>
+#include <sys/file.h>
 
 #include "usb_monitor.h"
 #include "usb_logging.h"
@@ -272,6 +273,7 @@ static void lanner_handler_write_cmd_buf(struct lanner_shared *l_shared)
             //add EPOLLIN and hope for the best? exit?
             USB_DEBUG_PRINT_SYSLOG(ctx, LOG_ERR, "Failed to write to Lanner MCU: "
                                    "%s (%d)\n", strerror(errno), errno);
+            exit(EXIT_FAILURE);
         }
 
         return;
@@ -426,7 +428,7 @@ static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
     l_shared->mcu_bitmask = l_shared->mcu_bitmask_to_write;
     l_shared->mcu_bitmask_to_write = 0;
 
-    USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Lanner MCU mask after OK: %u\n",
+    USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Lanner pending after OK: %u\n",
                            l_shared->pending_ports_mask);
 
     if (!l_shared->pending_ports_mask) {
@@ -529,21 +531,30 @@ static void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
 {
     struct lanner_shared *l_shared = ctx->mcu_info;
 
-    //NEW STATES FOR THESE TWO
-    //Lock file
-
-    //Open device
-    if (lanner_handler_open_mcu(l_shared)) {
-        //START TIMER, SET STATE
-        return;
-    }
-
-    //Update epoll handle
-    l_shared->mcu_epoll_handle->fd = l_shared->mcu_fd;
-    backend_event_loop_update(ctx->event_loop, EPOLLIN, EPOLL_CTL_ADD,
-                              l_shared->mcu_fd, l_shared->mcu_epoll_handle);
-
     if (l_shared->mcu_state == LANNER_MCU_PENDING) {
+        //Lock file, MCU is exclusive resource
+        if (flock(l_shared->lock_fd, LOCK_EX | LOCK_NB)) {
+            USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_ERR, "Failed to lock MCU "
+                                   "file. Reason %s (%d)\n", strerror(errno),
+                                   errno);
+            lanner_handler_start_private_timer(l_shared,
+                                               LANNER_HANDLER_RESTART_MS);
+            return;
+        }
+
+        //Open device
+        if (lanner_handler_open_mcu(l_shared)) {
+            flock(l_shared->lock_fd, LOCK_UN);
+            lanner_handler_start_private_timer(l_shared,
+                                               LANNER_HANDLER_RESTART_MS);
+            return;
+        }
+
+        //Update epoll handle
+        l_shared->mcu_epoll_handle->fd = l_shared->mcu_fd;
+        backend_event_loop_update(ctx->event_loop, EPOLLIN, EPOLL_CTL_ADD,
+                                  l_shared->mcu_fd, l_shared->mcu_epoll_handle);
+
         lanner_handler_get_digital_out(ctx);
     } else {
         lanner_handler_set_digital_out(ctx->mcu_info);
@@ -556,6 +567,7 @@ void lanner_handler_itr_cb(struct usb_monitor_ctx *ctx)
 
     if (l_shared->mcu_state == LANNER_MCU_UPDATE_DONE) {
         //Close file and clean lock, we are done
+        flock(l_shared->lock_fd, LOCK_UN);
         close(l_shared->mcu_fd);
         l_shared->mcu_state = LANNER_MCU_IDLE;
     } else {
@@ -565,7 +577,8 @@ void lanner_handler_itr_cb(struct usb_monitor_ctx *ctx)
 
 uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
                                   struct json_object *json,
-                                  const char *mcu_path_org)
+                                  const char *mcu_path_org,
+                                  const char *mcu_lock_path)
 {
     int json_arr_len = json_object_array_length(json);
     struct json_object *json_port, *path_array = NULL, *json_path;
@@ -575,7 +588,7 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
     uint8_t bit = UINT8_MAX, unknown_option = 0;
     struct lanner_shared *l_shared;
 
-    if (!mcu_path_org) {
+    if (!mcu_path_org || !mcu_lock_path) {
         return 1;
     }
 
@@ -593,6 +606,11 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
     l_shared->ctx = ctx;
     l_shared->mcu_state = LANNER_MCU_IDLE;
     l_shared->mcu_path = mcu_path;
+
+    if ((l_shared->lock_fd = open(mcu_lock_path, O_RDONLY)) < 0) {
+        lanner_handler_cleanup_shared(l_shared);
+        return 1;
+    }
 
     if (!(l_shared->mcu_epoll_handle = backend_create_epoll_handle(ctx,
                                                                    0,
