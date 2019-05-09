@@ -290,6 +290,7 @@ static void lanner_handler_write_cmd_buf(struct lanner_shared *l_shared)
     if (l_shared->cmd_buf_progress == l_shared->cmd_buf_strlen) {
         USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Done writing command\n");
         monitor_events = EPOLLIN;
+        l_shared->cmd_buf_progress = 0;
     } else {
         //We need to wait for EPOLLOUT, we had a short write
         monitor_events = EPOLLIN | EPOLLOUT;
@@ -346,7 +347,6 @@ static void lanner_handler_set_digital_out(struct lanner_shared *l_shared)
     snprintf(l_shared->cmd_buf, sizeof(l_shared->cmd_buf),
              "SET DIGITAL_OUT %u\n", l_shared->mcu_bitmask_to_write);
     l_shared->cmd_buf_strlen = strlen(l_shared->cmd_buf);
-    l_shared->cmd_buf_progress = 0;
 
     USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Lanner MCU cmd %s",
                            l_shared->cmd_buf);
@@ -360,7 +360,6 @@ static void lanner_handler_get_digital_out(struct usb_monitor_ctx *ctx)
 
     snprintf(l_shared->cmd_buf, sizeof(l_shared->cmd_buf), "GET DIGITAL_OUT\n");
     l_shared->cmd_buf_strlen = strlen(l_shared->cmd_buf);
-    l_shared->cmd_buf_progress = 0;
     lanner_handler_write_cmd_buf(l_shared);
 }
 
@@ -370,7 +369,6 @@ static void lanner_handler_get_version(struct usb_monitor_ctx *ctx)
 
     snprintf(l_shared->cmd_buf, sizeof(l_shared->cmd_buf), "GET VERSION\n");
     l_shared->cmd_buf_strlen = strlen(l_shared->cmd_buf);
-    l_shared->cmd_buf_progress = 0;
     lanner_handler_write_cmd_buf(l_shared);
 }
 
@@ -458,6 +456,17 @@ static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
 //Need to add a new check message function
 static void lanner_handler_handle_msg(struct lanner_shared *l_shared)
 {
+    uint16_t status_code;
+    int n = sscanf(l_shared->buf_input, "%u ", &status_code);
+
+    if (n && status_code != 100 && !l_shared->cmd_buf_progress) {
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Got status code %u, "
+                               "will retransmit last message\n");
+        lanner_handler_write_cmd_buf(l_shared);
+        return;
+    }
+
+    //Check ode and retransmit the last message
     switch (l_shared->mcu_state) {
     case LANNER_MCU_GET_VERSION:
         if (!strncmp(LANNER_VERSION_REPLY, l_shared->buf_input,
