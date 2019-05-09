@@ -116,13 +116,6 @@ static uint8_t lanner_handler_add_port(struct usb_monitor_ctx *ctx,
     return 0;
 }
 
-static void lanner_handler_flush_mcu(struct lanner_shared *l_shared)
-{
-    uint8_t tmp_buf[255];
-
-    while (read(l_shared->mcu_fd, tmp_buf, sizeof(tmp_buf)) > 0) {}
-}
-
 static uint8_t lanner_handler_open_mcu(struct lanner_shared *l_shared)
 {
     int fd = open(l_shared->mcu_path, O_RDWR | O_NOCTTY | O_NONBLOCK |
@@ -269,8 +262,7 @@ static void lanner_handler_start_private_timer(struct lanner_shared *l_shared,
 static void lanner_handler_write_cmd_buf(struct lanner_shared *l_shared)
 {
     struct usb_monitor_ctx *ctx = l_shared->ctx;
-    //uint8_t bytes_to_write = l_shared->cmd_buf_strlen - l_shared->cmd_buf_progress;
-    uint8_t bytes_to_write = 1;
+    uint8_t bytes_to_write = l_shared->cmd_buf_strlen - l_shared->cmd_buf_progress;
     ssize_t numbytes = write(l_shared->mcu_fd,
                              l_shared->cmd_buf + l_shared->cmd_buf_progress,
                              bytes_to_write);
@@ -298,12 +290,6 @@ static void lanner_handler_write_cmd_buf(struct lanner_shared *l_shared)
     if (l_shared->cmd_buf_progress == l_shared->cmd_buf_strlen) {
         USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Done writing command\n");
         monitor_events = EPOLLIN;
-
-        if (l_shared->mcu_state == LANNER_MCU_READING) {
-            l_shared->mcu_state = LANNER_MCU_WAIT_REPLY;
-        } else {
-            l_shared->mcu_state = LANNER_MCU_WAIT_OK;
-        }
     } else {
         //We need to wait for EPOLLOUT, we had a short write
         monitor_events = EPOLLIN | EPOLLOUT;
@@ -362,11 +348,6 @@ static void lanner_handler_set_digital_out(struct lanner_shared *l_shared)
     l_shared->cmd_buf_strlen = strlen(l_shared->cmd_buf);
     l_shared->cmd_buf_progress = 0;
 
-    memset(l_shared->buf_input, 0, sizeof(l_shared->buf_input));
-    l_shared->input_progress = 0;
-
-    l_shared->mcu_state = LANNER_MCU_WRITING;
-
     USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Lanner MCU cmd %s",
                            l_shared->cmd_buf);
 
@@ -394,6 +375,7 @@ static void lanner_handler_reply(struct lanner_shared *l_shared)
         exit(EXIT_FAILURE);
     }
 
+    l_shared->mcu_state = LANNER_MCU_SET_DIGITAL_OUT;
     lanner_handler_set_digital_out(l_shared);
 }
 
@@ -449,60 +431,90 @@ static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
         l_shared->mcu_state = LANNER_MCU_UPDATE_DONE;
         usb_monitor_start_itr_cb(l_port->ctx);
     } else {
-        l_shared->mcu_state = LANNER_MCU_WRITING;
         lanner_handler_start_private_timer(l_shared, LANNER_HANDLER_RESTART_MS);
+    }
+}
+
+//Need to add a new check message function
+static void lanner_handler_handle_msg(struct lanner_shared *l_shared)
+{
+    switch (l_shared->mcu_state) {
+    case LANNER_MCU_GET_DIGITAL_OUT:
+        if (!strncmp(LANNER_HANDLER_REPLY, l_shared->buf_input,
+                     strlen(LANNER_HANDLER_REPLY))) {
+            lanner_handler_reply(l_shared);
+        }
+        break;
+    case LANNER_MCU_SET_DIGITAL_OUT:
+        if (!strncmp(LANNER_HANDLER_OK_REPLY, l_shared->buf_input,
+                     strlen(LANNER_HANDLER_OK_REPLY))) {
+            lanner_handler_ok_reply(l_shared);
+        }
+        break;
+    default:
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Unknown message %s\n",
+                               l_shared->buf_input);
+        break;
     }
 }
 
 static void lanner_handler_handle_input(struct lanner_shared *l_shared)
 {
-    uint8_t input_buf_tmp[256] = {0};
-    ssize_t numbytes = read(l_shared->mcu_fd, input_buf_tmp,
-                            (sizeof(input_buf_tmp) - 1));
-    uint8_t i;
-    bool found_newline = false;
+    ssize_t numbytes = read(l_shared->mcu_fd,
+                            l_shared->buf_input + l_shared->input_progress,
+                            sizeof(l_shared->buf_input) - l_shared->input_progress);
+    uint16_t i, cur_msg_len;
+    bool found_newline;
 
-    if ((l_shared->mcu_state != LANNER_MCU_WAIT_OK &&
-         l_shared->mcu_state != LANNER_MCU_WAIT_REPLY) || numbytes <= 0) {
-        return;
-    }
-
-    //Aborting here is not very nice, but it is the only thing I can think of
-    //now. Aborting is not a big problem, as usb monitor will recover fine after
-    //a restart. Remember that we have already written our command (unless something
-    //breaks in the MCU), so if we get here and fail then for example a disabled
-    //port will be enabled again by our watchdog.
-    if (numbytes + l_shared->input_progress > (sizeof(l_shared->buf_input) - 1)) {
-        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_ERR,
-                               "Oversized reply from Lanner MCU\n");
+    //Never seen this happen, not sure how to handle so we give up
+    if (numbytes <= 0) {
         exit(EXIT_FAILURE);
     }
 
-    memcpy(l_shared->buf_input + l_shared->input_progress, input_buf_tmp,
-           numbytes);
     l_shared->input_progress += numbytes;
 
-    for (i = 0; i < l_shared->input_progress; i++) {
-        if (l_shared->buf_input[i] == '\n') {
-            found_newline = true;
+    while (true) {
+        found_newline = false;
+
+        for (i = 0; i < l_shared->input_progress; i++) {
+            //All messages end with \r\n actually
+            if (l_shared->buf_input[i] == '\n') {
+                found_newline = true;
+                break;
+            }
+        }
+
+        if (!found_newline) {
+            if (l_shared->input_progress == sizeof(l_shared->buf_input)) {
+                USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_ERR,
+                                       "Oversized reply from Lanner MCU\n");
+                exit(EXIT_FAILURE);
+            } else {
+                return;
+            }
+        }
+
+        l_shared->buf_input[i] = '\0';
+
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "BUF: %s\n", l_shared->buf_input);
+
+        lanner_handler_handle_msg(l_shared);
+
+        //Convert from 0-indexed to 1-indexed, for easier comparison with for
+        //example progress
+        cur_msg_len = i + 1;
+
+        if (cur_msg_len != l_shared->input_progress) {
+            l_shared->input_progress -= cur_msg_len;
+            memmove(l_shared->buf_input, l_shared->buf_input + cur_msg_len,
+                    l_shared->input_progress);
+            memset(l_shared->buf_input + l_shared->input_progress, 0,
+                   sizeof(l_shared->buf_input) - l_shared->input_progress);
+        } else {
+            l_shared->input_progress = 0;
+            memset(l_shared->buf_input, 0, sizeof(l_shared->buf_input));
             break;
         }
-    }
-
-    if (!found_newline) {
-        return;
-    }
-
-    USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "BUFFER %s\n", l_shared->buf_input);
-
-    if (l_shared->mcu_state == LANNER_MCU_WAIT_REPLY &&
-        !strncmp(LANNER_HANDLER_REPLY, l_shared->buf_input,
-                 strlen(LANNER_HANDLER_REPLY))) {
-        lanner_handler_reply(l_shared);
-    } else if (l_shared->mcu_state == LANNER_MCU_WAIT_OK &&
-               !strncmp(LANNER_HANDLER_OK_REPLY, l_shared->buf_input,
-                        strlen(LANNER_HANDLER_OK_REPLY))) {
-        lanner_handler_ok_reply(l_shared);
     }
 }
 
@@ -529,15 +541,8 @@ static void lanner_handler_get_digital_out(struct usb_monitor_ctx *ctx)
     struct lanner_shared *l_shared = ctx->mcu_info;
 
     snprintf(l_shared->cmd_buf, sizeof(l_shared->cmd_buf), "GET DIGITAL_OUT\n");
-
     l_shared->cmd_buf_strlen = strlen(l_shared->cmd_buf);
     l_shared->cmd_buf_progress = 0;
-
-    memset(l_shared->buf_input, 0, sizeof(l_shared->buf_input));
-    l_shared->input_progress = 0;
-
-    l_shared->mcu_state = LANNER_MCU_READING;
-
     lanner_handler_write_cmd_buf(l_shared);
 }
 
@@ -545,6 +550,8 @@ static void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
 {
     struct lanner_shared *l_shared = ctx->mcu_info;
 
+    //Before we can do anything with the MCU and move out of the PENDING-state,
+    //we need to own the MCU device
     if (l_shared->mcu_state == LANNER_MCU_PENDING) {
         //Lock file, MCU is exclusive resource
         if (flock(l_shared->lock_fd, LOCK_EX | LOCK_NB)) {
@@ -564,16 +571,32 @@ static void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
             return;
         }
 
-        lanner_handler_flush_mcu(l_shared);
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Locked Lanner MCU\n");
+
+        lanner_flush_mcu(l_shared);
 
         //Update epoll handle
         l_shared->mcu_epoll_handle->fd = l_shared->mcu_fd;
         backend_event_loop_update(ctx->event_loop, EPOLLIN, EPOLL_CTL_ADD,
                                   l_shared->mcu_fd, l_shared->mcu_epoll_handle);
 
+        l_shared->mcu_state = LANNER_MCU_GET_DIGITAL_OUT;
+    }
+
+    switch (l_shared->mcu_state) {
+    case LANNER_MCU_REQUEST_VERSION:
+        break;
+    case LANNER_MCU_GET_DIGITAL_OUT:
         lanner_handler_get_digital_out(ctx);
-    } else {
+        break;
+    case LANNER_MCU_SET_DIGITAL_OUT:
         lanner_handler_set_digital_out(ctx->mcu_info);
+        break;
+    default:
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_ERR,
+                               "Unknown MCU state %u\n",
+                               l_shared->mcu_state);
+        break;
     }
 }
 
@@ -586,6 +609,8 @@ void lanner_handler_itr_cb(struct usb_monitor_ctx *ctx)
         flock(l_shared->lock_fd, LOCK_UN);
         close(l_shared->mcu_fd);
         l_shared->mcu_state = LANNER_MCU_IDLE;
+
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Unlocked Lanner MCU\n");
     } else {
         lanner_handler_start_mcu_update(ctx);
     }
@@ -645,7 +670,6 @@ uint8_t lanner_handler_parse_json(struct usb_monitor_ctx *ctx,
         lanner_handler_cleanup_shared(l_shared);
         return 1;
     }
-
 
     USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO, "Lanner shared info. Path: %s\n",
                            l_shared->mcu_path);

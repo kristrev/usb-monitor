@@ -18,14 +18,13 @@ enum {
     LANNER_MCU_IDLE,
     //There are pending operations, but we have not started updating yet
     LANNER_MCU_PENDING,
+    //We will use the VERSION command as our device lock
+    LANNER_MCU_REQUEST_VERSION,
     //We are reading from the MCU
-    LANNER_MCU_READING,
-    //Wait for MCU to reply with DIGITAL_OUT
-    LANNER_MCU_WAIT_REPLY,
+    LANNER_MCU_GET_DIGITAL_OUT,
     //We are writing to the MCU, MCU locked
-    LANNER_MCU_WRITING,
-    //We are waiting for OK from the MCU, MCU locked
-    LANNER_MCU_WAIT_OK,
+    LANNER_MCU_SET_DIGITAL_OUT,
+    //We are done an ready to free MCU
     LANNER_MCU_UPDATE_DONE,
 };
 

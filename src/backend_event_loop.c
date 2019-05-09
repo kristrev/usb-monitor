@@ -162,9 +162,9 @@ static void backend_event_loop_run_timers(struct backend_event_loop *del)
             cur_timeout = timeout;
             timeout = timeout->timeout_next.le_next;
 
-            //Execute and remove timeout from list
-            cur_timeout->cb(cur_timeout->data);
+            //Remove and execute timeout
             backend_delete_timeout(cur_timeout);
+            cur_timeout->cb(cur_timeout->data);
 
             //Rearm timer or free memory if we are done
             if (cur_timeout->intvl) {
