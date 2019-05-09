@@ -354,6 +354,26 @@ static void lanner_handler_set_digital_out(struct lanner_shared *l_shared)
     lanner_handler_write_cmd_buf(l_shared);
 }
 
+static void lanner_handler_get_digital_out(struct usb_monitor_ctx *ctx)
+{
+    struct lanner_shared *l_shared = ctx->mcu_info;
+
+    snprintf(l_shared->cmd_buf, sizeof(l_shared->cmd_buf), "GET DIGITAL_OUT\n");
+    l_shared->cmd_buf_strlen = strlen(l_shared->cmd_buf);
+    l_shared->cmd_buf_progress = 0;
+    lanner_handler_write_cmd_buf(l_shared);
+}
+
+static void lanner_handler_get_version(struct usb_monitor_ctx *ctx)
+{
+    struct lanner_shared *l_shared = ctx->mcu_info;
+
+    snprintf(l_shared->cmd_buf, sizeof(l_shared->cmd_buf), "GET VERSION\n");
+    l_shared->cmd_buf_strlen = strlen(l_shared->cmd_buf);
+    l_shared->cmd_buf_progress = 0;
+    lanner_handler_write_cmd_buf(l_shared);
+}
+
 static void lanner_handler_reply(struct lanner_shared *l_shared)
 {
     int n;
@@ -439,6 +459,14 @@ static void lanner_handler_ok_reply(struct lanner_shared *l_shared)
 static void lanner_handler_handle_msg(struct lanner_shared *l_shared)
 {
     switch (l_shared->mcu_state) {
+    case LANNER_MCU_GET_VERSION:
+        if (!strncmp(LANNER_VERSION_REPLY, l_shared->buf_input,
+                     strlen(LANNER_VERSION_REPLY))) {
+            USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Got version\n");
+            l_shared->mcu_state = LANNER_MCU_GET_DIGITAL_OUT;
+            lanner_handler_get_digital_out(l_shared->ctx);
+        }
+        break;
     case LANNER_MCU_GET_DIGITAL_OUT:
         if (!strncmp(LANNER_HANDLER_REPLY, l_shared->buf_input,
                      strlen(LANNER_HANDLER_REPLY))) {
@@ -536,16 +564,6 @@ static void lanner_handle_private_timeout(void *ptr)
     lanner_handler_start_mcu_update(ptr);
 }
 
-static void lanner_handler_get_digital_out(struct usb_monitor_ctx *ctx)
-{
-    struct lanner_shared *l_shared = ctx->mcu_info;
-
-    snprintf(l_shared->cmd_buf, sizeof(l_shared->cmd_buf), "GET DIGITAL_OUT\n");
-    l_shared->cmd_buf_strlen = strlen(l_shared->cmd_buf);
-    l_shared->cmd_buf_progress = 0;
-    lanner_handler_write_cmd_buf(l_shared);
-}
-
 static void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
 {
     struct lanner_shared *l_shared = ctx->mcu_info;
@@ -580,11 +598,12 @@ static void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
         backend_event_loop_update(ctx->event_loop, EPOLLIN, EPOLL_CTL_ADD,
                                   l_shared->mcu_fd, l_shared->mcu_epoll_handle);
 
-        l_shared->mcu_state = LANNER_MCU_GET_DIGITAL_OUT;
+        l_shared->mcu_state = LANNER_MCU_GET_VERSION;
     }
 
     switch (l_shared->mcu_state) {
-    case LANNER_MCU_REQUEST_VERSION:
+    case LANNER_MCU_GET_VERSION:
+        lanner_handler_get_version(ctx);
         break;
     case LANNER_MCU_GET_DIGITAL_OUT:
         lanner_handler_get_digital_out(ctx);

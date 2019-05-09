@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#define LANNER_VERSION_REPLY "100 VERSION"
 #define LANNER_HANDLER_REPLY "100 DIGITAL_OUT"
 #define LANNER_HANDLER_OK_REPLY "100 OK"
 
@@ -19,7 +20,7 @@ enum {
     //There are pending operations, but we have not started updating yet
     LANNER_MCU_PENDING,
     //We will use the VERSION command as our device lock
-    LANNER_MCU_REQUEST_VERSION,
+    LANNER_MCU_GET_VERSION,
     //We are reading from the MCU
     LANNER_MCU_GET_DIGITAL_OUT,
     //We are writing to the MCU, MCU locked
