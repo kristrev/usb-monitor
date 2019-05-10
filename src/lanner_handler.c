@@ -500,12 +500,28 @@ static void lanner_handler_handle_input(struct lanner_shared *l_shared)
     ssize_t numbytes = read(l_shared->mcu_fd,
                             l_shared->buf_input + l_shared->input_progress,
                             sizeof(l_shared->buf_input) - l_shared->input_progress);
-    uint16_t i, cur_msg_len;
+    uint16_t i, next_msg_idx;
     bool found_newline;
 
     //Never seen this happen, not sure how to handle so we give up
     if (numbytes <= 0) {
         exit(EXIT_FAILURE);
+    }
+
+    //Remove any leading \0. This can only happen if we have no data in buffer from before. We handle abcd\n\0 just
+    //fine, but not \0abcd for example
+    if (!l_shared->input_progress) {
+        for (i = 0; i < numbytes; i++) {
+            if (l_shared->buf_input[i] != '\0') {
+                break;
+            }
+        }
+
+        if (i) {
+            USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Removed %u leading zeros\n", i);
+            numbytes -= i;
+            memmove(l_shared->buf_input, l_shared->buf_input + i, numbytes);
+        }
     }
 
     l_shared->input_progress += numbytes;
@@ -533,25 +549,36 @@ static void lanner_handler_handle_input(struct lanner_shared *l_shared)
 
         l_shared->buf_input[i] = '\0';
 
-        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "BUF: %s\n", l_shared->buf_input);
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Reply from MCU: %s\n", l_shared->buf_input);
 
         lanner_handler_handle_msg(l_shared);
 
-        //Convert from 0-indexed to 1-indexed, for easier comparison with for
-        //example progress
-        cur_msg_len = i + 1;
+        //Next message to check is one after the current index
+        next_msg_idx = i + 1;
 
-        if (cur_msg_len != l_shared->input_progress) {
-            l_shared->input_progress -= cur_msg_len;
-            memmove(l_shared->buf_input, l_shared->buf_input + cur_msg_len,
-                    l_shared->input_progress);
-            memset(l_shared->buf_input + l_shared->input_progress, 0,
-                   sizeof(l_shared->buf_input) - l_shared->input_progress);
-        } else {
+        //If there is no data left in buffer, we can just stop here
+        if (next_msg_idx == l_shared->input_progress) {
             l_shared->input_progress = 0;
             memset(l_shared->buf_input, 0, sizeof(l_shared->buf_input));
             break;
         }
+
+        //Skip any \0 characthers. We recycle lCurMsgLen and start on the first index after the \n
+        for (i = next_msg_idx; i < l_shared->input_progress; i++) {
+            if (l_shared->buf_input[i] != '\0') {
+                break;
+            }
+        }
+        //Only zeros found, we can wipe the entire buffer
+        if (i == l_shared->input_progress) {
+            l_shared->input_progress = 0;
+            memset(l_shared->buf_input, 0, sizeof(l_shared->buf_input));
+            break;
+        }
+
+        l_shared->input_progress -= i;
+        memmove(l_shared->buf_input, l_shared->buf_input + i, l_shared->input_progress);
+        memset(l_shared->buf_input + l_shared->input_progress, 0, sizeof(l_shared->buf_input) - l_shared->input_progress);
     }
 }
 
