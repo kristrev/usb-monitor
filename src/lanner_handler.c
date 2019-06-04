@@ -59,7 +59,16 @@ static int32_t lanner_update_port(struct usb_port *port, uint8_t cmd)
     //Ensure that state of l_shared is correct + that callback is added. Doing
     //these operations multiple times does no harm
     l_shared->mcu_state = LANNER_MCU_PENDING;
-    usb_monitor_start_itr_cb(l_port->ctx);
+
+    //So far, the only thing we do when the private timer expires is to call
+    //start_mcu_update(), and the same applies to itr-callback. Thus, if timer
+    //is running, there is no need to start the itr callback. One case where
+    //this can happen, is if network-listener requests two reboots very close
+    //together and something causes opening the MCU to fail
+    if (!l_shared->mcu_timeout_handle->timeout_next.le_next &&
+        !l_shared->mcu_timeout_handle->timeout_next.le_prev) {
+        usb_monitor_start_itr_cb(l_port->ctx);
+    }
 
     return 0;
 }
@@ -123,8 +132,8 @@ static uint8_t lanner_handler_open_mcu(struct lanner_shared *l_shared)
     struct termios mcu_attr;
 
     if (fd == -1) {
-        fprintf(stderr, "Failed to open file: %s (%d)\n", strerror(errno),
-                errno);
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_ERR, "Failed to open file:"
+                               "%s (%d)\n", strerror(errno), errno);
         return 1;
     }
 
@@ -132,8 +141,9 @@ static uint8_t lanner_handler_open_mcu(struct lanner_shared *l_shared)
     retval = tcgetattr(fd, &mcu_attr);
 
     if (retval) {
-        fprintf(stderr, "Fetching terminal attributes failed: %s (%d)\n",
-                strerror(errno), errno);
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_ERR, "Fetching terminal"
+                              "attributes failed: %s (%d)\n", strerror(errno),
+                              errno);
         close(fd);
         return 1;
     }
@@ -187,8 +197,8 @@ static uint8_t lanner_handler_open_mcu(struct lanner_shared *l_shared)
     mcu_attr.c_cc[VTIME] = 0;
 
     if (cfsetospeed(&mcu_attr, B57600)) {
-        fprintf(stderr, "Setting speed failed: %s (%d)\n", strerror(errno),
-                errno);
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_ERR, "Setting speed failed:"
+                               "%s (%d)\n", strerror(errno), errno);
         close(fd);
         return 1;
     }
@@ -196,8 +206,9 @@ static uint8_t lanner_handler_open_mcu(struct lanner_shared *l_shared)
     retval = tcsetattr(fd, TCSANOW, &mcu_attr);
 
     if (retval) {
-        fprintf(stderr, "Setting terminal attributes failed: %s (%d)\n",
-                strerror(errno), errno);
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_ERR, "Setting terminal"
+                               "attributes failed: %s (%d)\n", strerror(errno),
+                               errno);
         close(fd);
         return 1;
     }
@@ -619,6 +630,7 @@ static void lanner_handler_start_mcu_update(struct usb_monitor_ctx *ctx)
 
         //Open device
         if (lanner_handler_open_mcu(l_shared)) {
+            USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Failed to open MCU\n");
             flock(l_shared->lock_fd, LOCK_UN);
             lanner_handler_start_private_timer(l_shared,
                                                LANNER_HANDLER_RESTART_MS);
@@ -660,6 +672,7 @@ void lanner_handler_itr_cb(struct usb_monitor_ctx *ctx)
     struct lanner_shared *l_shared = ctx->mcu_info;
 
     if (l_shared->mcu_state == LANNER_MCU_UPDATE_DONE) {
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Lanner ITR CB close\n");
         //Close file and clean lock, we are done
         flock(l_shared->lock_fd, LOCK_UN);
         close(l_shared->mcu_fd);
@@ -667,6 +680,7 @@ void lanner_handler_itr_cb(struct usb_monitor_ctx *ctx)
 
         USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Unlocked Lanner MCU\n");
     } else {
+        USB_DEBUG_PRINT_SYSLOG(l_shared->ctx, LOG_INFO, "Lanner ITR CB start update\n");
         lanner_handler_start_mcu_update(ctx);
     }
 }
