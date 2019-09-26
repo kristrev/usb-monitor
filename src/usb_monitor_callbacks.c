@@ -48,6 +48,9 @@ static void usb_device_added(struct usb_monitor_ctx *ctx, libusb_device *dev)
     port = usb_monitor_lists_find_port_path(ctx, path, path_len);
 
     if (!port) {
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
+                               "Device: %.4x:%.4x added\n", desc.idVendor,
+                               desc.idProduct);
         return;
     }
 
@@ -109,12 +112,19 @@ static void usb_device_removed(struct usb_monitor_ctx *ctx, libusb_device *dev)
     uint8_t path[USB_PATH_MAX];
     uint8_t path_len;
     struct usb_port *port = NULL;
+    struct libusb_device_descriptor desc;
+
+    libusb_get_device_descriptor(dev, &desc);
 
     usb_helpers_fill_port_array(dev, path, &path_len);
     port = usb_monitor_lists_find_port_path(ctx, path, path_len);
 
-    if (!port)
+    if (!port) {
+        USB_DEBUG_PRINT_SYSLOG(ctx, LOG_INFO,
+                               "Device: %.4x:%.4x removed\n", desc.idVendor,
+                               desc.idProduct);
         return;
+    }
 
     usb_helpers_reset_port(port);
     usb_monitor_print_ports(ctx);
